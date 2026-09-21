@@ -7,7 +7,7 @@ import io
 import re
 from html import escape
 from psycopg.types.json import Jsonb
-from travel_publication import destinations, split_guides
+from travel_publication import destinations, split_guides, budget_summary
 
 SCOPE = "request->>'assistant' = 'travel'"
 ACTIVE = ('queued', 'running', 'testing', 'publishing')
@@ -63,7 +63,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         result = {key:row[key] for key in ('id','prompt','status','parent_id','result','created_at','updated_at')}
         result.update(trip=row['request'].get('trip',{}), guide_id=row['request'].get('guide_id'),
                       guide=guide, photo_count=report.get('photo_count',0), web_search_count=report.get('web_search_count',0),
-                      progress=report.get('progress',[]),
+                      progress=report.get('progress',[]),photo_missing=report.get('photo_missing',[]),
                       html=render_markdown(guide['body']) if row['status']=='done' and guide else '')
         result['destinations'] = destinations(guide) if guide else []
         result['publications'] = row['request'].get('publications', {})
@@ -73,7 +73,10 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         guide = row['report'].get('travel_guide')
         if row['status'] != 'done' or not isinstance(guide, dict):
             abort(409, description='攻略生成完成后才能发布')
-        if mode == 'single': return [guide]
+        if mode == 'single':
+            try: budget=budget_summary(guide['body'],row['request'].get('trip',{}).get('people'),render_markdown)
+            except ValueError as error: abort(409,description=str(error))
+            return [{**guide, 'budget':budget or guide.get('budget','')}]
         if mode != 'split': abort(400, description='请选择整篇或按候选地拆分')
         try: return split_guides(guide, row['request'].get('trip', {}), render_markdown)
         except ValueError as error: abort(409, description=str(error))
@@ -207,7 +210,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
             media=db().execute('SELECT filename FROM media WHERE filename=%s AND deleted_at IS NULL',(filename,)).fetchone()
             if not media or not path.is_file() or path.stat().st_size>500000:return 'src=""'
             raw=path.read_bytes();total+=len(raw)
-            if total>8*500000:return 'src=""'
+            if total>16*500000:return 'src=""'
             return 'src="data:image/webp;base64,'+base64.b64encode(raw).decode()+'"'
         html=re.sub(r'src="/media/([a-f0-9]{32}\.webp)(?:\?w=(?:640|1280))?"',embed,html)
         css=(Path(__file__).parent/'static/guide-visual.css').read_text()

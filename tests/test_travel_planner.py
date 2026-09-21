@@ -92,6 +92,22 @@ class TravelPlannerTests(unittest.TestCase):
         self.assertEqual(website.status_code,201)
         self.assertEqual(self.post('/tasks',{'prompt':'错误模板','trip':{'template':'unknown'}}).status_code,400)
 
+    def test_export_supports_sixteen_bounded_local_images(self):
+        import io
+        from PIL import Image
+        photo=io.BytesIO();Image.new('RGB',(16,16),'green').save(photo,'JPEG');photo.seek(0)
+        upload=self.client.post('/api/upload',data={'image':(photo,'scene.jpg')},headers={'X-CSRF-Token':self.fixture.csrf},content_type='multipart/form-data')
+        url=upload.json['url']
+        path=test_app.Path(test_app.TEMP.name)/'uploads'/url.rsplit('/',1)[1]
+        # Valid WebP with bounded trailing bytes exercises the aggregate byte limit.
+        raw=path.read_bytes();path.write_bytes(raw+b'\0'*(490000-len(raw)))
+        task=self.create();guide=self.complete(task)
+        guide['body']=''.join('<p><img src="'+url+'" alt="scene"></p>' for _ in range(17))
+        with connect() as c:c.execute('UPDATE agent_tasks SET report=%s WHERE id=%s',(Jsonb({'travel_guide':guide}),task))
+        response=self.client.get(f'/api/admin/travel-agent/tasks/{task}/export',buffered=True)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data.count(b'data:image/webp;base64,'),16)
+
     def test_visual_export_embeds_private_photos_and_preserves_cards(self):
         import io
         from PIL import Image

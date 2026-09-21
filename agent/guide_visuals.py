@@ -1,26 +1,40 @@
 """Deterministic guide cards; model text is escaped, only cached local pictures render."""
 from html import escape
 import re
+from urllib.parse import urlsplit
 
 TEMPLATES = {'auto':'智能图文攻略', 'culture':'人文城市漫游', 'nature':'山水自然轻游', 'food':'美食街区打卡'}
 
 def compose(guide, photos):
     def text(value): return escape(str(value),quote=True)
+    def inline(value):
+        value=str(value);parts=[];last=0
+        for m in re.finditer(r'\[([^\]]+)\]\((https?://[^\s)]+)\)',value):
+            parts.append(text(value[last:m.start()]));url=m[2]
+            try: valid=urlsplit(url).scheme in ('http','https') and bool(urlsplit(url).hostname) and not urlsplit(url).username
+            except ValueError: valid=False
+            parts.append('<a href="'+text(url)+'">'+text(m[1])+'</a>' if valid else text(m[1]));last=m.end()
+        parts.append(text(value[last:]));return ''.join(parts)
     def picture(key):
         p=photos.get(key)
         if not p: return ''
         if not re.fullmatch(r'/media/[a-f0-9]{32}\.webp',p.get('url','')): return ''
         source=p.get('source','');license_url=p.get('license_url','')
-        if not source.startswith('https://commons.wikimedia.org/'): return ''
-        if not license_url.startswith(('https://creativecommons.org/','https://commons.wikimedia.org/')):return ''
-        return '<figure class="trip-photo"><img src="'+text(p['url'])+'" alt="'+text(p['title'])+'"><figcaption>参考照片：'+text(p['title'])+' · '+text(p['author'])+' · <a href="'+text(license_url)+'">'+text(p['license'])+'</a> · <a href="'+text(source)+'">图片来源</a> · 已缩放压缩</figcaption></figure>'
+        try:
+            for url,hosts in ((source,('commons.wikimedia.org',)),(license_url,('creativecommons.org','commons.wikimedia.org'))):
+                parsed=urlsplit(url)
+                if parsed.scheme!='https' or parsed.hostname not in hosts or parsed.username or parsed.password or parsed.port not in (None,443):return ''
+        except ValueError:return ''
+        field,index=key.split('-');subject=guide[field][int(index)]['name']
+        caption=p.get('caption') or ('菜品资料示意；不代表指定门店实拍' if field=='foods' else '景点资料照片；不代表出行当天景况')
+        return '<figure class="trip-photo"><img src="'+text(p['url'])+'" alt="'+text(subject)+'"><figcaption>'+text(caption)+' · '+text(p['author'])+' · <a href="'+text(license_url)+'">'+text(p['license'])+'</a> · <a href="'+text(source)+'">图片来源</a> · 已缩放压缩</figcaption></figure>'
     groups=[]
     for field,label in [('highlights','值得停留的风景与人文'),('foods','这一站，吃什么')]:
         cards=[]
         for i,item in enumerate(guide.get(field,[])):
             extra = [('体验',item['experience']),('停留',item['duration']),('出行提示',item['tip'])] if field=='highlights' else [('去哪里找',item['area']),('参考花费',item['price']),('点餐提示',item['tip'])]
-            rows=''.join('<p><strong>'+k+'：</strong>'+text(v)+'</p>' for k,v in extra if v)
-            cards.append('<div class="trip-card">'+picture(f'{field}-{i}')+'<div class="trip-card-copy"><h3>'+text(item['name'])+'</h3><p>'+text(item['description'])+'</p>'+rows+'</div></div>')
+            rows=''.join('<p><strong>'+k+'：</strong>'+inline(v)+'</p>' for k,v in extra if v)
+            cards.append('<div class="trip-card">'+picture(f'{field}-{i}')+'<div class="trip-card-copy"><h3>'+text(item['name'])+'</h3><p>'+inline(item['description'])+'</p>'+rows+'</div></div>')
         if cards:groups.append('<h2>'+label+'</h2>\n\n<div class="trip-grid">'+''.join(cards)+'</div>')
     if guide.get('template')=='food': groups.reverse()
     if guide.get('template')=='auto':

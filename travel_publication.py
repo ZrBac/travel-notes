@@ -2,6 +2,66 @@
 import re
 from html import escape
 from bs4 import BeautifulSoup
+from decimal import Decimal
+
+
+def money_range(value):
+    """Only explicit RMB amounts; do not guess prices embedded in prose/formulas."""
+    value=re.sub(r'[\s,，*]', '', value)
+    if value=='免费':return (Decimal(0),Decimal(0))
+    match=re.fullmatch(r'(?:人民币|RMB|CNY|[¥￥])?(\d{1,9}(?:\.\d{1,2})?)(?:[～~—–\-至](\d{1,9}(?:\.\d{1,2})?))?(?:元)?(?:/(?:人|团))?',value)
+    if not match:return None
+    low=Decimal(match[1]);high=Decimal(match[2] or match[1])
+    if low>high:raise ValueError('预算区间的下限不能大于上限，请先修正预算表')
+    return low,high
+
+
+def budget_summary(body, people, render):
+    soup=BeautifulSoup(render(body),'html.parser');summaries=[]
+    for table in soup.find_all('table'):
+        rows=table.find_all('tr')
+        if not rows:continue
+        headers=[c.get_text(strip=True) for c in rows[0].find_all(['th','td'])]
+        if '人均' not in headers or '团队合计' not in headers:continue
+        personal=headers.index('人均');team=headers.index('团队合计')
+        parts=[];total=None;complete=True
+        for row in rows[1:]:
+            cells=[c.get_text(strip=True) for c in row.find_all(['th','td'])]
+            if len(cells)<=max(personal,team):complete=False;continue
+            per=money_range(cells[personal]);group=money_range(cells[team])
+            if per and group and type(people) is int and people>0:
+                if any(abs(per[i]*people-group[i])>Decimal('0.5')*people for i in (0,1)):
+                    raise ValueError('预算表“'+cells[0]+'”的人均×人数与团队合计不符，请先统一人数及费用口径')
+            if cells[0] in ('合计','总计'):
+                total=(per,group)
+            elif per and group:parts.append((per,group))
+            else:complete=False
+        if not total or not all(total):continue
+        if parts and complete:
+            for col in (0,1):
+                for bound in (0,1):
+                    if abs(sum(part[col][bound] for part in parts)-total[col][bound])>Decimal('0.5')*len(parts):
+                        raise ValueError('预算分项加总与合计不符，请先修正预算表后发布')
+        def fmt(pair):
+            def number(n):return format(n,'f').rstrip('0').rstrip('.') if n%1 else str(int(n))
+            return number(pair[0]) if pair[0]==pair[1] else number(pair[0])+'～'+number(pair[1])
+        summaries.append('人均'+fmt(total[0])+'元；团队'+fmt(total[1])+'元')
+    if not summaries:return None
+    suffix='，不含往返大交通' if re.search(r'不含(?:出发地)?(?:往返)?大交通',soup.get_text()) else '（估算，费用范围见正文）'
+    return (summaries[0]+suffix)[:60]
+
+
+def clean_fragment(soup, render):
+    # Older structured cards escaped Markdown citations and document prefixes.
+    for node in list(soup.find_all(string=True)):
+        if node.parent.name in ('a','code','pre'):continue
+        value=re.sub(r'文档[一二三四五六七八九十0-9]+[·｜| :：-]*(?:D[0-9]+[｜| :：-]*)?', '', str(node))
+        if re.search(r'\[[^\]]+\]\(https?://[^\s)]+\)',value):
+            fragment=BeautifulSoup(render(escape(value)), 'html.parser')
+            container=fragment.p or fragment
+            for child in list(container.contents):node.insert_before(child)
+            node.extract()
+        elif value!=str(node):node.replace_with(value)
 
 
 def destinations(guide):
@@ -17,6 +77,7 @@ def split_guides(guide, trip, render):
     body = '\n'.join(line.replace('｜', '|') if line.lstrip().startswith('|') else line
                      for line in guide['body'].splitlines())
     soup = BeautifulSoup(render(body), 'html.parser')
+    clean_fragment(soup, render)
     days = soup.select('.trip-day')
     itinerary = guide['itinerary']
     overview = soup.select_one('.trip-table-wrap table')
@@ -63,7 +124,7 @@ def split_guides(guide, trip, render):
                     for field, pairs in cards.items()}
         if not selected['highlights'] or not selected['foods']:
             raise ValueError(name + '缺少景点或美食介绍，请补齐后再拆分')
-        summary = (name + ' · ' + '；'.join(item['description'] for item, _ in selected['highlights']))[:300]
+        summary = (name + ' · ' + '；'.join(re.sub(r'\[([^\]]+)\]\(https?://[^\s)]+\)',r'\1',item['description']) for item, _ in selected['highlights']))[:300]
         conditions = ' · '.join(str(x) for x in (trip.get('dates'), str(guide['days'])+' 天',
                                     str(trip.get('people', 1))+' 人', trip.get('rooms')) if x)
         overview_html = '<h2>行程一览</h2><div class="trip-table-wrap"><table>' + str(overview.thead) + '<tbody>' + ''.join(str(rows[i]) for i in indices) + '</tbody></table></div>'
@@ -87,6 +148,6 @@ def split_guides(guide, trip, render):
                     links[url] = label
         result.append({**{key: guide.get(key, '') for key in ('country', 'days', 'season')},
                        'title': title, 'destination': name, 'summary': summary, 'body': final,
-                       'budget': '详见本篇预算表（参考估算）', 'cover': cover,
+                       'budget': budget_summary(practical,trip.get('people'),render) or '参考估算，费用范围与明细见正文', 'cover': cover,
                        'sources': '\n'.join('['+label+']('+url+')' for url, label in links.items())[:5000]})
     return result

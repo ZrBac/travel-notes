@@ -306,8 +306,8 @@ def finish_photos(active):
         try:
             with db() as c:
                 cached={}
-                for key,photo in list(photos.items())[:8]:
-                    if not re.fullmatch(r'(highlights|foods)-[0-9]',key) or not isinstance(photo,dict):continue
+                for key,photo in list(photos.items())[:16]:
+                    if not re.fullmatch(r'(highlights|foods)-[0-9]{1,2}',key) or not isinstance(photo,dict):continue
                     field,index=key.split('-')
                     if int(index)>=len(guide.get(field,[])):continue
                     filename=key+'.webp';path=folder/filename
@@ -320,6 +320,7 @@ def finish_photos(active):
                     if raw[:4]!=b'RIFF' or raw[8:12]!=b'WEBP':continue
                     if not all(type(photo.get(k)) is int and 1<=photo[k]<=960 for k in ('width','height')):continue
                     if not all(isinstance(photo.get(k),str) and len(photo[k])<=1000 for k in ('source','title','author','license','license_url')):continue
+                    if not isinstance(photo.get('caption',''),str) or len(photo.get('caption',''))>300:continue
                     name=uuid.uuid4().hex+'.webp';target=UPLOADS/name
                     with target.open('xb') as output:output.write(raw)
                     created.append(target);os.chown(target,DB_USER.pw_uid,DB_USER.pw_gid);target.chmod(0o600)
@@ -328,7 +329,7 @@ def finish_photos(active):
                 guide['body']=compose(guide,cached)
                 if len(guide['body'])>100000:raise ValueError('图文攻略过长，请减少目的地或分段规划后重试')
                 guide['cover']=next((v['url'] for k,v in cached.items() if k.startswith('highlights-')),'/static/assets/lake.jpg')
-                report={'travel_guide':guide,'photos':cached,'photo_count':len(cached),'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count']}
+                report={'travel_guide':guide,'photos':cached,'photo_count':len(cached),'photo_missing':[item['name'] for field in ('highlights','foods') for i,item in enumerate(guide.get(field,[])) if f'{field}-{i}' not in cached],'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count']}
                 c.execute("UPDATE agent_tasks SET status='done',result=%s,report=%s,updated_at=now() WHERE id=%s",(guide['body'],Jsonb(report),task_id))
         except Exception:
             for path in created:path.unlink(missing_ok=True)

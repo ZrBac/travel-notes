@@ -77,7 +77,7 @@ const TravelPlanner = (() => {
       ${complete?`<p class="planner-summary">${esc(g.summary)}</p><div class="planner-meta"><span>${esc(g.destination)} · ${g.days} 天</span><span>${esc(g.season)}</span><span>${esc(g.budget)}</span></div>
       <p class="planner-reference">${t.web_search_count?'已联网检索参考资料。':'未记录到联网检索，请另行核实。'} 门票、营业时间、价格和预约规则以出行时官方信息为准。</p>
       <div class="planner-result-actions actions">${publicationActions(t)}${t.guide_id?`<a class="button primary" href="#edit/${t.guide_id}">编辑已存档攻略 →</a>`:`<button type="button" class="button primary" data-planner="save">存为攻略草稿</button>`}<button type="button" class="button" data-planner="copy">复制正文</button><a class="button" href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a><button type="button" class="button" data-planner="enrich">智能整理图文与路线</button></div>
-      ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}<div id="planner-publication"></div><article class="prose planner-prose">${t.html}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
+      ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}${t.photo_missing?.length?`<p class="help">待补配图：${t.photo_missing.map(esc).join('、')}。缺少准确素材时保留文字，不用相似景点或不同菜品替代。</p>`:''}<div id="planner-publication"></div><article class="prose planner-prose">${t.html}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
       `<p class="agent-answer">${esc(t.result||'任务已加入队列，轮到后会开始研究。')}</p>${t.progress.length?`<details open><summary>正在参考的资料</summary><ul class="planner-progress">${t.progress.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`:''}`}`;
   }
   async function refresh(token=epoch){
@@ -124,7 +124,7 @@ const TravelPlanner = (() => {
       }
       if(action==='followup'||action==='enrich'){
         const form=$('#planner-form');if(state.dirty&&!confirm('使用这份攻略的条件继续修改？当前未提交的表单内容将被替换。'))return;
-        fill(detail.trip);form.dataset.parent=detail.id;form.prompt.value=action==='enrich'?'按智能图文攻略重新整理完整攻略，根据目的地特色、季节和偏好融合人文、自然与美食体验，保留原有日期、人数、房间数、预算和目的地约束，补齐景点体验、当地特色菜品、推荐街区、参考花费和对应照片查询，逐日写清游玩节点、顺路交通、上午下午晚上的执行表及午餐晚餐。':'';state.dirty=action==='enrich';
+        fill(detail.trip);form.dataset.parent=detail.id;form.prompt.value=action==='enrich'?'按智能图文攻略重新整理完整攻略，根据目的地特色、季节和偏好融合人文、自然与美食体验，保留原有日期、人数、房间数、预算和目的地约束，补齐景点体验、当地特色菜品、推荐街区、参考花费和对应照片查询，逐日写清游玩节点、顺路交通、上午下午晚上的执行表及午餐晚餐。按内置复核规范检查日期星期与周一闭馆、房间数和间夜、预算上下限与团队合计、照片对象和许可、官方预约渠道、首末日及雨天替换；合并旧版本的有效内容并去重，输出可独立存档的完整稿。':'';state.dirty=action==='enrich';
         $('#planner-followup').textContent='正在继续完善 #'+detail.id+'，会参考之前的要求和攻略。修改条件后写下新要求即可。';form.prompt.focus();form.scrollIntoView({behavior:'smooth',block:'start'});
       }
       if(action==='new'||action==='example'){

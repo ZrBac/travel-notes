@@ -27,7 +27,7 @@ const TravelEditor=(()=>{
   const html=serialized(ctx,ctx.editor.value);
   ctx.textarea.value=html===ctx.baseline?ctx.original:html;
  }
- function changed(ctx){if(!owns(ctx)||!ctx.ready)return;sync(ctx);ctx.onChange();}
+ function changed(ctx){if(!owns(ctx)||!ctx.ready)return;const before=ctx.textarea.value;sync(ctx);if(ctx.textarea.value!==before)ctx.onChange();}
  function destroy(){const ctx=current;current=null;if(!ctx)return;ctx.editor?.destruct();document.body.classList.remove('editor-focused');}
  async function mount(textarea,options){
   destroy();

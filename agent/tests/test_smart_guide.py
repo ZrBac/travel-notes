@@ -7,7 +7,7 @@ from guide_visuals import compose
 def sample():
  g={k:('住宿预算和预约需要核实，雨天安排休息。'*20 if k=='body' else '南京参考') for k in travel_planner.LIMITS}
  g.update(days=2,template='auto',planning_summary='结合南京的人文、河岸自然与地方风味，把相近区域安排在同一天，留出休息和预约余量。')
- for key,fields in travel_planner.CARD_FIELDS.items():g[key]=[{k:('' if k=='photo_query' else '具体介绍') for k in fields} for _ in range(4)]
+ for key,fields in travel_planner.CARD_FIELDS.items():g[key]=[{k:('' if k=='photo_query' else '南京｜具体介绍' if k=='name' else '具体介绍') for k in fields} for _ in range(4)]
  g['itinerary']=[]
  for day in (1,2):
   g['itinerary'].append({'day':day,'destination':'南京','theme':'人文与街区','stops':['住宿区域','博物馆','河岸街区'],'transport':'地铁加步行，时长参考估计','pace':'轻松，步行预计约3公里','lunch':'当地鸭血粉丝汤，街区内用餐','dinner':'地方家常菜，返回住宿区域','stay':'市中心住宿区域',
@@ -36,7 +36,12 @@ class SmartGuideTests(unittest.TestCase):
  def test_compare_requires_complete_days_for_each_candidate(self):
   g=sample();other=copy.deepcopy(g['itinerary'])
   for day in other:day['destination']='泉州'
-  g['itinerary']+=other;self.assertEqual(len(self.parse(g)['itinerary']),4)
+  g['itinerary']+=other
+  for field in ('highlights','foods'):
+   cards=copy.deepcopy(g[field])
+   for c in cards:c['name']=c['name'].replace('南京','泉州')
+   g[field]+=cards
+  self.assertEqual(len(self.parse(g)['itinerary']),4)
   g['itinerary'].pop()
   with self.assertRaises(ValueError):self.parse(g)
  def test_new_schema_is_auto_and_legacy_guides_still_parse(self):
@@ -55,4 +60,4 @@ class PhotoSubjectTests(unittest.TestCase):
   self.assertTrue(photo_matches('pineapple sticky rice','Glutinous Rice in Pineapple.jpg','',food=True))
   self.assertTrue(photo_matches('Manting Park','Manting Imperial Garden.jpg',''))
   self.assertTrue(photo_matches('pineapple sticky rice','Sweet Black Glutinous Rice in Pineapple.jpg',''))
-  self.assertTrue(photo_matches('Xishuangbanna Tropical Botanical Garden','Tropical Botanical Garden, Xishuangbanna - panoramio.jpg',''))
+  self.assertFalse(photo_matches('Xishuangbanna Tropical Botanical Garden','Tropical Botanical Garden, Xishuangbanna - panoramio.jpg',''))

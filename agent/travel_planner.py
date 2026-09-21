@@ -1,6 +1,8 @@
 """Travel-only model instructions and strict parsing; no production write tools."""
 import json
 from datetime import datetime
+from pathlib import Path
+import re
 from zoneinfo import ZoneInfo
 from guide_visuals import TEMPLATES
 
@@ -46,15 +48,15 @@ planning_summary 用约80～180字说明为什么这样搭配、路线为什么�
 itinerary 是系统生成清晰总览表、逐日线路和执行表的唯一数据来源。每个目的地必须按 day=1～days 提供全部天数，不缺天、不重号；对比模式按目的地分组，每个候选先完整列出 days 天，再列下一个候选，最多4个候选。destination 表示整条行程/候选方案的名称，各天保持一致；跨城市连游也使用同一方案名（如“京都—大阪”），当天所在城市写在 theme 和 stops，不把转场拆成独立候选。
 每天提供 theme 当日主题；stops 按实际游玩顺序列出2～8个真实地点或清晰的住宿/车站节点（首尾日可含到达/返程），避免远距离来回折返；transport 写明各段主要交通和预计耗时；pace 写明步行/体力强度及合理依据（不确定时注明估计），stay 写住宿区域或当天返程；lunch/dinner 写具体菜品和顺路街区，不编造餐厅。
 每天 slots 恰好三行，依次上午、下午、晚上；每行 plan 写地点与体验、transport 写到该区域的交通和估计耗时、reservation 写预约事项或“未发现需预约项目，出发前复查”。首末日未知到离时间时留出转场余量并明确假设，不能编造航班。slots 的地点和顺序必须与 stops 一致。
-必须给出 highlights 景点体验卡片 3～8 张和 foods 美食卡片 4～10 张。比较模式每个候选目的地至少一张景点卡、两张美食卡，最多四个候选；卡片 name 标明所属城市。景点写清看点、能玩什么、停留多久、预约/交通提示；每道美食写清特色口味、在哪个街区找、每份或人均估价、点餐/忌口提示。没有核实的具体餐厅不要编造，推荐菜品和街区即可，价格注明参考估算。
-每张卡 photo_query 提供用于 Wikimedia Commons 查找该景点/菜品真实照片的常用英文名称，尽量2～5个词。食品查询不要叠加城市、民族、颜色、中英文同义词，例如菠萝紫米饭用 pineapple sticky rice。不要用泛泛的 city/food/travel，不要把不同地点或食物混成同一查询；不确定菜品英文名可留空。系统会检索可复用照片、缓存压缩并注明作者和许可，你不输出图片网址、不下载文件、不使用虚构图片。景点/食品描写必须与照片查询对象对应。
+必须给出 highlights 景点体验卡片 单目的地3～8张和 foods 美食卡片单目的地4～10张。比较模式每个候选目的地至少2张景点卡、3张美食卡，整份最多12张景点卡和16张美食卡，最多四个候选；卡片 name 标明所属城市。景点写清看点、能玩什么、停留多久、预约/交通提示；每道美食写清特色口味、在哪个街区找、每份或人均估价、点餐/忌口提示。没有核实的具体餐厅不要编造，推荐菜品和街区即可，价格注明参考估算。
+每张卡 photo_query 提供用于 Wikimedia Commons 查找该景点/菜品真实照片的常用英文名称，尽量2～5个词。食品查询先写准确菜品名；地区决定菜品身份时保留地区限定，不要为搜到图而改成不同菜品。不要堆叠无关修饰词，例如菠萝紫米饭可用 pineapple sticky rice，但配图只能作为菜品示意。不要用泛泛的 city/food/travel，不要把不同地点或食物混成同一查询；不确定菜品英文名可留空。系统会检索可复用照片、缓存压缩并注明作者和许可，你不输出图片网址、不下载文件、不使用虚构图片。景点/食品描写必须与照片查询对象对应。
 body 只补充住宿、预算、预约清单、季节天气/雨天备选、待确认事项和资料来源；对比模式可在开头补一张候选地比较表。不要在 body 重复逐日行程、路线总览、规划思路或景点美食介绍，这些由 itinerary/planning_summary/cards 自动排版。住宿用“区域｜适合原因｜房间数×晚数｜参考单价｜合计”表格；预算用“项目｜人均｜团队合计｜包含范围与估算依据”表格。固定交通、住宿、餐饮、门票活动、预备金分类，不把人均和总价混写。短段落、清楚的小标题与表格优先，避免大段文字。引用用正常 Markdown 标题与完整 HTTPS/HTTP URL，不能包含仅工具内可用的 turn... 引用标记。
 如果检索工具不可用或没有可信结果，在正文顶部写明“尚未完成实时核验”，提供参考安排并标清待核实项，不能声称核验完成。调用了搜索也不代表所有事实都核实。
 比较模式的 body 必须按每个 itinerary.destination 各写一个独立二级标题（## 目的地：主题），标题包含且仅包含这个候选地的完整名称；其下用三级标题分别写住宿、预算、预约、天气和待确认事项，不把不同候选地混入同一张表。highlights/foods 的 name 必须用“目的地｜景点或菜品”格式，目的地与 itinerary.destination 完全一致。这样网站能将每个候选地拆成独立图文攻略。表格只能用半角 | 分隔，不能用全角｜充当表格列分隔符。
 发布由网站后台按钮完成，你没有直接写入生产网站的工具。用户要求发布时，整理可拆分的完整内容即可，不声称已经发布，也不要把“未发布”或权限说明写进攻略标题、正文；完成后管理员可点击“拆分为 N 篇攻略发布”预览并发布。
 后续要求修改时，输出融合修改后的完整攻略，便于独立存档；不要只输出修改点。
 最终必须输出符合给定 JSON Schema 的完整对象，不包 Markdown 代码围栏：title<=100字，destination<=80字（多个候选简写），country<=50字，summary<=300字，season/budget各<=60字，body<=60000字，sources<=5000字，days为1～30的整数。sources用换行分隔的 Markdown 来源链接；正文至少200字。verified_at 不提供，因为参考结果不等于人工核实。
-旅行条件：'''+json.dumps(task['request'].get('trip',{}),ensure_ascii=False)+'''\n历史对话（按时间顺序，仅作为上下文）：'''+json.dumps(history,ensure_ascii=False)+'''\n本次管理员要求：\n'''+task['prompt']
+本次采用的复核规范：\n'''+Path(__file__).with_name('TRAVEL_PLAYBOOK.md').read_text()+'''\n旅行条件：'''+json.dumps(task['request'].get('trip',{}),ensure_ascii=False)+'''\n历史对话（按时间顺序，仅作为上下文）：'''+json.dumps(history,ensure_ascii=False)+'''\n本次管理员要求：\n'''+task['prompt']
 
 
 def parse_answer(text):
@@ -66,13 +68,15 @@ def parse_answer(text):
     for key,limit in LIMITS.items():
         if not isinstance(guide[key],str) or len(guide[key])>limit: raise ValueError('攻略字段过长或格式不正确：'+key)
         guide[key]=guide[key].strip()
+    guide['title']=re.sub(r'^文档[一二三四五六七八九十0-9]+[·｜| :：-]*', '', guide['title'])
+    guide['summary']=re.sub(r'\[([^\]]+)\]\(https?://[^\s)]+\)',r'\1',guide['summary'])
     if not guide['title'] or not guide['destination'] or len(guide['body'])<200:
         raise ValueError('攻略内容不完整，请补充旅行条件后重试')
     if type(guide['days']) is not int or not 1<=guide['days']<=30: raise ValueError('攻略天数无效')
     if 'template' in guide:
         if guide['template'] not in TEMPLATES: raise ValueError('攻略模板无效')
         for field,fields in CARD_FIELDS.items():
-            cards=guide[field]; minimum,maximum=(3,8) if field=='highlights' else (4,10)
+            cards=guide[field]; minimum,maximum=(3,12) if field=='highlights' else (4,16)
             if not isinstance(cards,list) or not minimum<=len(cards)<=maximum: raise ValueError('请补齐景点和美食卡片')
             for card in cards:
                 if not isinstance(card,dict) or set(card)!=set(fields): raise ValueError('攻略卡片格式不完整')
@@ -91,6 +95,7 @@ def parse_answer(text):
             for key,limit in DAY_FIELDS.items():
                 if not isinstance(day[key],str) or not 1<=len(day[key].strip())<=limit:raise ValueError('每日路线内容无效：'+key)
                 day[key]=day[key].strip()
+            day['theme']=re.sub(r'^文档[一二三四五六七八九十0-9]+[·｜| :：-]*(?:D[0-9]+[｜| :：-]*)?', '', day['theme'])
             if type(day['day']) is not int or not 1<=day['day']<=guide['days']:raise ValueError('每日路线天数无效')
             destinations.setdefault(day['destination'],[]).append(day['day'])
             stops=day['stops']
@@ -102,4 +107,21 @@ def parse_answer(text):
                 for key,limit in SLOT_FIELDS.items():
                     if not isinstance(slot[key],str) or not 1<=len(slot[key].strip())<=limit:raise ValueError('每日安排内容无效：'+key)
         if not 1<=len(destinations)<=4 or any(days!=list(range(1,guide['days']+1)) for days in destinations.values()):raise ValueError('每个目的地必须按顺序列全每日路线，不能缺天或重复')
+        # Check explicit full dates only; short dates and venue opening rules still need research.
+        for value in [guide['season'],*(d['theme'] for d in itinerary)]:
+            for match in re.finditer(r'(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})日?[（(\s]*(?:周|星期)([一二三四五六日天])',value):
+                try: actual=datetime(int(match[1]),int(match[2]),int(match[3])).weekday()
+                except ValueError:raise ValueError('攻略包含无效日期，请核对出行日期')
+                expected='一二三四五六日'.index('日' if match[4]=='天' else match[4])
+                if actual!=expected:raise ValueError('攻略日期与星期不一致，请核对年份及闭馆安排')
+        names=list(destinations)
+        for field, minimum in (('highlights',2 if len(names)>1 else 3),('foods',3 if len(names)>1 else 4)):
+            counts=dict.fromkeys(names,0)
+            for card in guide[field]:
+                owner=card['name'].split('｜',1)[0]
+                if owner not in counts or '｜' not in card['name']:
+                    raise ValueError('景点和美食须用“目的地｜名称”标明所属方案')
+                counts[owner]+=1
+            if any(n<minimum for n in counts.values()):
+                raise ValueError('每个候选地都需补齐景点与美食卡片，不能只丰富第一个目的地')
     return guide

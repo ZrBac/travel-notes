@@ -1,0 +1,281 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "field": "highlights",
+      "names": [
+        "中国科学院西双版纳热带植物园",
+        "中科院西双版纳热带植物园",
+        "中科院热带植物园",
+        "西双版纳热带植物园"
+      ],
+      "queries": [
+        "xishuangbanna tropical botanical garden",
+        "xtbg"
+      ],
+      "file": "20251225 Banyan in the Xishuangbanna Tropical Botanical Garden, Chinese Academy of Sciences.jpg",
+      "caption": "中科院西双版纳热带植物园榕树资料照；并非出行当天景况",
+      "reviewed_on": "2026-09-21",
+      "destination": "西双版纳"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "傣味合餐",
+        "傣式烧烤",
+        "傣味合餐搭配"
+      ],
+      "queries": [
+        "dai-style barbecue",
+        "dai barbecue"
+      ],
+      "file": "Dai-style barbecue.jpg",
+      "caption": "傣味合餐搭配示意；图片不对应指定餐厅或单道香茅草烤鱼",
+      "reviewed_on": "2026-09-21",
+      "destination": "西双版纳"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "蟳埔",
+        "蟳埔村",
+        "蟳埔村与簪花围"
+      ],
+      "queries": [
+        "xunpu",
+        "xunpu village"
+      ],
+      "file": "Xunpu Village 1.jpg",
+      "caption": "蟳埔村街巷资料照；节庆布置不代表本次出行现场",
+      "reviewed_on": "2026-09-21",
+      "destination": "泉州"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "面线糊"
+      ],
+      "queries": [
+        "quanzhou misua",
+        "misua soup quanzhou"
+      ],
+      "file": "Mī-suànn-kôo in Quanzhou (20200929220207).jpg",
+      "caption": "泉州面线糊实拍；图中配料为鸭血与醋肉，可按忌口调整",
+      "reviewed_on": "2026-09-21",
+      "destination": "泉州"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "醋肉"
+      ],
+      "queries": [
+        "quanzhou curou",
+        "curou"
+      ],
+      "file": "Curou as Misua toppings in Quanzhou (20201001071258).jpg",
+      "caption": "泉州醋肉资料照；可单吃或作为面线糊配料",
+      "reviewed_on": "2026-09-21",
+      "destination": "泉州"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "陶溪川",
+        "陶溪川文创街区",
+        "陶溪川与三宝手作"
+      ],
+      "queries": [
+        "taoxichuan"
+      ],
+      "file": "Taoxichuan 20241019.jpg",
+      "caption": "陶溪川旧厂房街区资料照；当日市集安排另行确认",
+      "reviewed_on": "2026-09-21",
+      "destination": "景德镇"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "老门东",
+        "老门东与秦淮夜色"
+      ],
+      "queries": [
+        "laomendong",
+        "lao men dong"
+      ],
+      "file": "Laomendong 2.jpg",
+      "caption": "南京老门东街巷资料照",
+      "reviewed_on": "2026-09-21",
+      "destination": "南京"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "鸭血粉丝汤"
+      ],
+      "queries": [
+        "duck blood and vermicelli soup",
+        "duck blood vermicelli soup"
+      ],
+      "file": "Duck blood vermicelli soup and soup-filled buns in Nanjing (20190224120657).jpg",
+      "caption": "南京鸭血粉丝汤与汤包资料照；非指定餐厅推荐",
+      "reviewed_on": "2026-09-21",
+      "destination": "南京"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "制瓷工艺",
+        "制瓷工艺与彩绘",
+        "瓷器彩绘"
+      ],
+      "queries": [
+        "jingdezhen porcelain workshop"
+      ],
+      "file": "Porcelain Workshop, Jingdezhen, Jiangxi, China.jpg",
+      "caption": "景德镇瓷器彩绘工艺资料照；并非已预约的三宝工作室",
+      "reviewed_on": "2026-09-21",
+      "destination": "景德镇"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "天后宫",
+        "泉州天后宫",
+        "木偶戏与城南慢走"
+      ],
+      "queries": [
+        "quanzhou tianhou temple",
+        "quanzhou tianhou gong"
+      ],
+      "file": "Quanzhou - Tianhou Gong - DSCF8655.JPG",
+      "caption": "泉州城南天后宫院落资料照；非蟳埔顺济宫",
+      "reviewed_on": "2026-09-21",
+      "destination": "泉州"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "明孝陵",
+        "明孝陵神道",
+        "明孝陵石象路",
+        "石象路"
+      ],
+      "queries": [
+        "ming xiaoling sacred way",
+        "stone elephant road ming xiaoling",
+        "ming xiaoling stone elephant"
+      ],
+      "file": "Stone Elephant Road (Ming Xiaoling).jpg",
+      "caption": "明孝陵石象路资料照；树叶颜色不代表本次日期的秋色",
+      "reviewed_on": "2026-09-21",
+      "destination": "南京"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "曼听公园",
+        "曼听御花园",
+        "曼听御花园（曼听公园）"
+      ],
+      "queries": [
+        "manting park",
+        "manting imperial garden"
+      ],
+      "file": "Manting Imperial Garden.jpg",
+      "caption": "曼听御花园资料照；不代表出行当天景况",
+      "reviewed_on": "2026-09-21",
+      "destination": "西双版纳"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "总佛寺",
+        "西双版纳总佛寺"
+      ],
+      "queries": [
+        "xishuangbanna zongfo temple",
+        "xishuangbanna zongfosi"
+      ],
+      "file": "20251226 Xishuangbanna Zongfosi.jpg",
+      "caption": "西双版纳总佛寺资料照",
+      "reviewed_on": "2026-09-21",
+      "destination": "西双版纳"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "菠萝饭",
+        "菠萝糯米饭",
+        "菠萝紫米饭"
+      ],
+      "queries": [
+        "pineapple sticky rice",
+        "pineapple glutinous rice"
+      ],
+      "file": "菠萝黑糯米饭 Sweet Black Glutinous Rice in Pineapple - Tastes of Dai stall, Huguoqiaotou Snack Centre (2501942686).jpg",
+      "caption": "菜品示意：护国桥头小吃城的菠萝饭；不是景洪餐厅实拍",
+      "reviewed_on": "2026-09-21",
+      "destination": "西双版纳"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "开元寺",
+        "泉州开元寺"
+      ],
+      "queries": [
+        "quanzhou kaiyuan temple"
+      ],
+      "file": "The courtyard of Quanzhou Kaiyuan Temple 20170727.jpg",
+      "caption": "泉州开元寺院落资料照",
+      "reviewed_on": "2026-09-21",
+      "destination": "泉州"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "御窑博物馆",
+        "景德镇御窑博物馆",
+        "御窑博物院"
+      ],
+      "queries": [
+        "jingdezhen imperial kiln museum"
+      ],
+      "file": "02-Jingdezhen Imperial Kiln Museum.jpg",
+      "caption": "景德镇御窑博物馆建筑资料照",
+      "reviewed_on": "2026-09-21",
+      "destination": "景德镇"
+    },
+    {
+      "field": "highlights",
+      "names": [
+        "南京博物院"
+      ],
+      "queries": [
+        "nanjing museum"
+      ],
+      "file": "Nanjing Museum front door.jpg",
+      "caption": "南京博物院资料照；临时展览与开放情况另行确认",
+      "reviewed_on": "2026-09-21",
+      "destination": "南京"
+    },
+    {
+      "field": "foods",
+      "names": [
+        "盐水鸭",
+        "南京盐水鸭"
+      ],
+      "queries": [
+        "nanjing salted duck"
+      ],
+      "file": "Nanjing salted duck.JPG",
+      "caption": "盐水鸭菜品示意；非指定门店推荐",
+      "reviewed_on": "2026-09-21",
+      "destination": "南京"
+    }
+  ],
+  "rejected_files": [
+    "Tropical Botanical Garden, Xishuangbanna - panoramio.jpg"
+  ]
+}
