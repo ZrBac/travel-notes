@@ -239,7 +239,7 @@ def serialize(row,full=False):
 def render_markdown(body):
     html=bleach.clean(markdown.markdown(body,extensions=['extra','sane_lists']),
         tags={'p','br','h1','h2','h3','h4','strong','em','ul','ol','li','blockquote','a','img','hr','code','pre','table','thead','tbody','tr','td','th','div','figure','figcaption','span'},
-        attributes={'div':lambda tag,name,value: name=='class' and value in ('trip-overview','trip-grid','trip-card','trip-card-copy','trip-day','trip-route','trip-table-wrap','trip-meals'),'span':lambda tag,name,value:name=='class' and value in ('trip-arrow','trip-stop'),'figure':lambda tag,name,value:name=='class' and value=='trip-photo','a':['href','title'],'img':['src','alt','title'],'th':['align'],'td':['align']},protocols={'http','https'},strip=True)
+        attributes={'div':lambda tag,name,value: name=='class' and value in ('trip-overview','trip-grid','trip-card','trip-card-copy','trip-day','trip-route','trip-table-wrap','trip-meals'),'span':lambda tag,name,value:name=='class' and value in ('trip-arrow','trip-stop'),'figure':lambda tag,name,value:name=='class' and value=='trip-photo','a':['href','title'],'img':['src','alt','title'],'th':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100),'td':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100)},protocols={'http','https'},strip=True)
     return re.sub(r'<img\b[^>]*>',lazy_image,html)
 
 @app.post('/api/admin/preview')

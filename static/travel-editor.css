@@ -1,0 +1,21 @@
+.travel-editor{border:1px solid #dbe3d6;border-radius:9px;background:white;min-width:0;overflow:clip}
+.travel-editor-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#f7f9f4;border-bottom:1px solid var(--line)}
+.travel-editor-bar button{border:0;background:transparent;color:#657965;padding:8px 11px;font-size:12px;border-radius:5px;white-space:nowrap}
+.travel-editor-bar button[aria-pressed=true]{background:#e1ecdd;color:#28563c;font-weight:600}
+.travel-editor-tabs{display:flex;gap:4px}.travel-editor-tip{padding:10px 15px;margin:0;font-size:11px;line-height:1.7;color:#7b897e;overflow-wrap:anywhere}
+.travel-editor>textarea{border:0!important;margin:0!important;border-radius:0!important;min-height:550px;font:13px/1.9 ui-monospace,monospace!important;padding:20px!important}
+.travel-editor .jodit-container{border:0!important;border-radius:0;--jd-color-background-default:white;--jd-color-background-light:#f7f9f4;--jd-color-border:#e4e9e1;--jd-color-text:#273d33}
+.travel-editor .jodit-toolbar__box{background:#f7f9f4;border-bottom:1px solid #e4e9e1}
+.travel-editor .jodit-wysiwyg{font:14px/1.9 Arial,'Noto Sans CJK SC','Microsoft YaHei',sans-serif!important;padding:22px!important;color:var(--ink)}
+.travel-editor .jodit-wysiwyg table{display:table!important;width:100%;min-width:300px;border-collapse:collapse;margin:16px 0}
+.travel-editor .jodit-wysiwyg th,.travel-editor .jodit-wysiwyg td{border:1px solid #dbe3d6;padding:10px;font-size:13px;min-width:65px}
+.travel-editor .jodit-wysiwyg img{height:auto!important;max-width:100%}
+.travel-editor .jodit-wysiwyg .trip-photo img{height:180px!important;object-fit:cover}
+.travel-editor .jodit-wysiwyg .trip-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.travel-editor .jodit-wysiwyg:focus{outline:0}.travel-editor .jodit-status-bar{border-top:1px solid #e4e9e1}
+.jodit-ui-popup,.jodit-dialog{z-index:1100!important}.jodit-ui-popup input,.jodit-ui-popup select{margin:0}.jodit-ui-popup label{margin-bottom:8px}
+.travel-editor.is-focused{position:fixed;inset:14px;z-index:1000;display:flex;flex-direction:column;border-radius:10px;box-shadow:0 0 0 100vmax #15392980;overflow:hidden}
+.travel-editor.is-focused .travel-editor-mount{min-height:0;flex:1;display:flex;flex-direction:column}.travel-editor.is-focused .jodit-container{height:100%!important;min-height:0!important;flex:1}
+.travel-editor.is-focused>textarea{min-height:0;flex:1;resize:none}.editor-focused{overflow:hidden}
+@media(max-width:700px){.travel-editor .jodit-wysiwyg{padding:14px!important}.travel-editor .jodit-wysiwyg .trip-grid{grid-template-columns:1fr}.travel-editor-bar{padding:8px;gap:4px}.travel-editor-bar button{padding:8px;font-size:11px}.travel-editor.is-focused{inset:5px}.travel-editor .jodit-workplace{max-width:100%;overflow-x:auto}.travel-editor .jodit-wysiwyg{overflow-wrap:anywhere}}
+.editor-layout>div,.record-editor-layout>div{min-width:0}.travel-editor .jodit-container{min-width:0!important;max-width:100%}.travel-editor .jodit-toolbar-editor-collection{flex-wrap:wrap}
