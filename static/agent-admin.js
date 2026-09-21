@@ -2,6 +2,7 @@
 const TravelAgent = (()=>{
   let revision=0, timer=null, selected=null, generation=0, busy=false, service={};
   const labels={queued:'等待执行',running:'正在处理',testing:'正在测试',ready:'等待发布',done:'已完成',failed:'未完成',cancelled:'已取消',publishing:'正在发布',published:'已发布',manual:'需要单独部署'};
+  function statusLabel(task){const r=task.report||task;if(active(task.status)&&Number(r.repair_attempt)>0)return task.status==='testing'?'修复后复测':'自动修复中';if(task.status==='done'&&r.outcome==='no_changes')return '未产生改动';if(task.status==='done'&&r.outcome==='documentation')return '仅完成说明';return labels[task.status]||task.status;}
   const kinds={change:'功能建设',diagnose:'故障诊断',chat:'咨询',publish:'发布',rollback:'回退'};
   const active=s=>['queued','running','testing','publishing'].includes(s);
   function stop(){clearTimeout(timer);timer=null;generation++;document.querySelector('#main')?.removeEventListener('click',handle);}
@@ -10,7 +11,7 @@ const TravelAgent = (()=>{
     const data=await api('/admin/agent');if(gen!==state.generation||token!==generation)return;
     service=data.service;
     $('#main').innerHTML=heading('网站管家','把需求交给管家，随时回来查看处理结果。')+`
-      <section class="panel agent-overview" id="agent-overview"></section>
+      <section class="panel agent-overview" id="agent-overview"></section><section class="panel"><div class="panel-top"><div><h2>常用操作</h2><p class="help">新增账号直接在表单办理；功能修改交给下方助手。任务测试失败时会自动尝试修复一次，仍由你决定是否发布。</p></div><button type="button" class="button secondary" data-admin-accounts>管理员管理</button></div></section>
       <div class="agent-layout"><section class="panel agent-compose"><h2>安排一个任务</h2>
         <form id="agent-task-form"><label>任务类型<select name="kind"><option value="change">功能建设 · 修改开发副本</option><option value="diagnose">故障诊断 · 只读检查</option><option value="chat">咨询 · 只读讨论</option></select></label>
         <label>需求<textarea name="prompt" required minlength="2" maxlength="6000" rows="7" placeholder="例如：给旅行足迹增加按目的地筛选；或者检查最近网站是否运行正常。"></textarea></label>
@@ -28,16 +29,18 @@ const TravelAgent = (()=>{
     $('#agent-versions').innerHTML=(service.versions||[]).map(v=>`<div class="agent-version"><code>${esc(v)}</code><button type="button" class="button small" data-agent="rollback" data-version="${esc(v)}">回退</button></div>`).join('')||'<p class="muted">暂无代码检查点。</p>';
   }
   function renderTasks(tasks){
-    $('#agent-tasks').innerHTML=tasks.length?tasks.map(t=>`<button type="button" class="agent-task ${selected===t.id?'selected':''}" data-agent="select" data-id="${t.id}"><span><strong>${esc(t.prompt.slice(0,70))}</strong><small>${kinds[t.kind]} · ${date(t.created_at)}</small></span><span class="agent-state ${t.status}">${labels[t.status]||t.status}</span></button>`).join(''):'<p class="muted">还没有任务，从左侧提交第一个需求。</p>';
+    $('#agent-tasks').innerHTML=tasks.length?tasks.map(t=>`<button type="button" class="agent-task ${selected===t.id?'selected':''}" data-agent="select" data-id="${t.id}"><span><strong>${esc(t.prompt.slice(0,70))}</strong><small>${kinds[t.kind]} · ${date(t.created_at)}</small></span><span class="agent-state ${t.status}">${esc(statusLabel(t))}</span></button>`).join(''):'<p class="muted">还没有任务，从左侧提交第一个需求。</p>';
   }
   function renderDetail(task){
     const r=task.report||{};$('#agent-detail').hidden=false;
-    $('#agent-detail').innerHTML=`<div class="panel-top"><h2>任务 #${task.id} · ${labels[task.status]}</h2><div class="actions">${['queued','running','testing'].includes(task.status)?`<button type="button" class="button small" data-agent="cancel" data-id="${task.id}">停止任务</button>`:''}${!active(task.status)?`<button type="button" class="button small danger" data-agent="delete" data-id="${task.id}">删除记录</button>`:''}${!active(task.status)&&['change','diagnose','chat'].includes(task.kind)?`<button type="button" class="button small" data-agent="followup" data-id="${task.id}" data-kind="${task.kind}">继续补充需求</button>`:''}</div></div>
+    $('#agent-detail').innerHTML=`<div class="panel-top"><h2>任务 #${task.id} · ${esc(statusLabel(task))}</h2><div class="actions">${['queued','running','testing'].includes(task.status)?`<button type="button" class="button small" data-agent="cancel" data-id="${task.id}">停止任务</button>`:''}${!active(task.status)?`<button type="button" class="button small danger" data-agent="delete" data-id="${task.id}">删除记录</button>`:''}${!active(task.status)&&['change','diagnose','chat'].includes(task.kind)?`<button type="button" class="button small" data-agent="followup" data-id="${task.id}" data-kind="${task.kind}">继续补充需求</button>`:''}</div></div>
+      ${r.code_start?`<p class="help">${esc(r.code_start)}</p>`:''}${r.repair_attempt?`<p class="help">已启动自动修复 ${Number(r.repair_attempt)} / 1 次；任务总时限仍为 20 分钟。</p>`:''}
       <p class="agent-request">${esc(task.prompt)}</p><div class="agent-answer">${esc(task.result||'任务已保存，等待处理。')}</div>
       ${r.progress?.length?`<details ${active(task.status)?'open':''}><summary>执行进度</summary><pre>${esc(r.progress.join('\n'))}</pre></details>`:''}
       ${r.files?.length?`<h3>变更预览</h3><ul class="agent-files">${r.files.map(f=>`<li><span>${esc(f.action)}</span><code>${esc(f.path)}</code>${f.automatic?'':'<small>需单独部署</small>'}</li>`).join('')}</ul><details><summary>查看代码差异${r.diff_truncated?'（内容较长，已截取）':''}</summary><pre>${esc(r.diff||'没有文本差异')}</pre></details>`:''}
+      ${r.repair_history?.length?`<details><summary>首次失败记录</summary><pre>${esc(r.repair_history.map(h=>h.tests).join('\n'))}</pre></details>`:''}
       ${r.tests?`<details><summary>${r.tests_passed?'测试通过':'测试未通过'} · 查看结果</summary><pre>${esc(r.tests)}</pre></details>`:''}
-      ${r.reason?`<p class="help">${esc(r.reason)}</p>`:''}
+      ${r.reason?`<p class="help agent-outcome" role="status">${esc(r.reason)}</p>`:''}
       ${task.status==='ready'&&r.publishable?`<div class="agent-publish"><p>请查看上面的修改与测试结果。发布前会备份，发布后检查网站，失败时恢复原代码。</p><button type="button" class="button primary" data-agent="publish" data-id="${task.id}" data-artifact="${esc(r.artifact)}">发布这个版本</button></div>`:''}
       ${r.usage?.input_tokens?`<p class="help">本次用量：输入 ${Number(r.usage.input_tokens).toLocaleString()} / 输出 ${Number(r.usage.output_tokens||0).toLocaleString()} tokens。使用已登录账号权益。</p>`:''}`;
   }
@@ -76,7 +79,7 @@ const TravelAgent = (()=>{
     try{
       if(action==='select'){selected=Number(node.dataset.id);$('#agent-detail').dataset.updated='';await refresh();$('#agent-detail').scrollIntoView({behavior:'smooth',block:'start'});}
       if(action==='refresh')await refresh();
-      if(action==='followup'){const form=$('#agent-task-form');form.dataset.parent=node.dataset.id;form.kind.value=node.dataset.kind;$('#agent-followup-note').textContent='继续任务 #'+node.dataset.id+'；会带上历史需求、结果和可用的候选修改。';form.prompt.focus();}
+      if(action==='followup'){const form=$('#agent-task-form');form.dataset.parent=node.dataset.id;form.kind.value=node.dataset.kind;$('#agent-followup-note').textContent='继续任务 #'+node.dataset.id+'；会带上历史需求、实际测试错误及可用候选；正式代码更新后会从最新版继续。';form.prompt.focus();}
       if(action==='new'){delete $('#agent-task-form').dataset.parent;$('#agent-followup-note').textContent='网站管家一次处理一个任务，可与旅游助手同时运行；关闭页面后继续。';$('#agent-task-form').prompt.focus();}
       if(action==='delete'){
         const id=Number(node.dataset.id);

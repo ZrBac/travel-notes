@@ -14,7 +14,7 @@ APP_MODULES = {'app.py','performance.py','html_imports.py','handbooks.py'}
 
 def paths(root):
     root = Path(root)
-    result = [p for p in root.iterdir() if p.suffix in ROOT_EXTENSIONS and p.name not in ('AGENTS.md','TASK_CONTEXT.md')]
+    result = [p for p in root.iterdir() if p.suffix in ROOT_EXTENSIONS and p.name not in ('AGENTS.md','TASK_CONTEXT.md','TEST_FAILURE.md')]
     for name in DIRECTORIES:
         directory=root/name
         if directory.is_symlink(): raise ValueError('候选目录包含符号链接：'+name)

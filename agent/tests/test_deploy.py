@@ -21,10 +21,10 @@ class DeployTests(unittest.TestCase):
     def test_publish_and_failure_restore(self):
         for success in (True,False):
             with self.subTest(success=success),tempfile.TemporaryDirectory() as d:
-                live,private,task=self.setup(Path(d));updates=[]
-                with patch.object(service,'LIVE',live),patch.object(service,'PRIVATE',private),patch.object(service,'checked',return_value=''),patch.object(service,'update',side_effect=lambda *a,**k:updates.append(a)),patch.object(service,'probe',return_value=success),patch.object(service.time,'sleep'):
+                live,private,task=self.setup(Path(d));updates=[];reports=[]
+                with patch.object(service,'LIVE',live),patch.object(service,'PRIVATE',private),patch.object(service,'checked',return_value=''),patch.object(service,'update',side_effect=lambda *a,**k:(updates.append(a),reports.append(k.get('report')))),patch.object(service,'probe',return_value=success),patch.object(service.time,'sleep'):
                     if success:
-                        service.deploy(task);self.assertEqual((live/'app.py').read_text(),'version=2\n');self.assertEqual(updates[-1][1],'done')
+                        service.deploy(task);self.assertEqual((live/'app.py').read_text(),'version=2\n');self.assertEqual(updates[-1][1],'done');self.assertEqual(reports[-2]['outcome'],'published');self.assertNotIn('尚未发布',reports[-2]['reason'])
                     else:
                         with self.assertRaises(RuntimeError):service.deploy(task)
                         self.assertEqual((live/'app.py').read_text(),'version=1\n')

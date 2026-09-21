@@ -203,6 +203,33 @@ def update_settings():
     audit('settings.update',details={'fields':list(SITE_KEYS)});db().commit()
     return jsonify(ok=True)
 
+@app.get('/api/admin/accounts')
+def admin_accounts():
+    rows=db().execute('SELECT id,username,display_name,created_at,last_login FROM admins ORDER BY id').fetchall()
+    return jsonify(accounts=rows)
+
+
+@app.post('/api/admin/accounts')
+def create_admin_account():
+    data=payload();username=data.get('username','');name=data.get('display_name','')
+    password=data.get('password','');current=data.get('current_password','')
+    if not isinstance(username,str) or not re.fullmatch(r'[A-Za-z0-9_]{3,32}',username.strip()):
+        abort(400,description='登录账号需要 3～32 位字母、数字或下划线')
+    if not isinstance(name,str) or not 1<=len(name.strip())<=40:abort(400,description='显示名称需要 1～40 个字符')
+    if not isinstance(password,str) or not 8<=len(password)<=256:abort(400,description='密码需要 8～256 个字符')
+    if password!=data.get('confirm_password'):abort(400,description='两次新密码不一致')
+    if not isinstance(current,str) or not 1<=len(current)<=256:abort(400,description='请填写当前管理员的密码')
+    account=db().execute('SELECT * FROM admins WHERE id=%s FOR UPDATE',(user()['id'],)).fetchone()
+    if account['session_version']!=session.get('version'):abort(401,description='登录信息已更新，请重新登录')
+    if not check_password_hash(account['password_hash'],current):abort(400,description='当前管理员密码不正确')
+    username=username.strip()
+    if db().execute('SELECT id FROM admins WHERE username=%s',(username,)).fetchone():abort(409,description='这个登录账号已存在，不会覆盖原账号')
+    created=db().execute('INSERT INTO admins(username,display_name,password_hash) VALUES(%s,%s,%s) RETURNING id,username,display_name',
+                         (username,name.strip(),generate_password_hash(password))).fetchone()
+    audit('account.create',created['id'],{'username':username});db().commit()
+    return jsonify(account=created),201
+
+
 @app.put('/api/admin/account')
 def update_account():
     data=payload();current=data.get('current_password','');new=data.get('new_password','');name=data.get('display_name',user()['display_name'])

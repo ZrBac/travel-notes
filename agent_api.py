@@ -19,7 +19,7 @@ def register(app, db, payload, audit):
 
     @app.get('/api/admin/agent')
     def agent_index():
-        rows = db().execute("SELECT id,kind,prompt,status,parent_id,created_at,updated_at FROM agent_tasks WHERE request->>'assistant' IS DISTINCT FROM 'travel' ORDER BY id DESC LIMIT 50").fetchall()
+        rows = db().execute("SELECT id,kind,prompt,status,parent_id,created_at,updated_at,report->>'outcome' AS outcome,report->>'repair_attempt' AS repair_attempt FROM agent_tasks WHERE request->>'assistant' IS DISTINCT FROM 'travel' ORDER BY id DESC LIMIT 50").fetchall()
         return jsonify(tasks=rows, service=service())
 
     @app.get('/api/admin/agent/tasks/<int:task_id>')
