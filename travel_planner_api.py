@@ -7,6 +7,7 @@ import io
 import re
 from html import escape
 from psycopg.types.json import Jsonb
+from travel_publication import destinations, split_guides
 
 SCOPE = "request->>'assistant' = 'travel'"
 ACTIVE = ('queued', 'running', 'testing', 'publishing')
@@ -64,7 +65,73 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
                       guide=guide, photo_count=report.get('photo_count',0), web_search_count=report.get('web_search_count',0),
                       progress=report.get('progress',[]),
                       html=render_markdown(guide['body']) if row['status']=='done' and guide else '')
+        result['destinations'] = destinations(guide) if guide else []
+        result['publications'] = row['request'].get('publications', {})
         return jsonify(task=result)
+
+    def publication_guides(row, mode):
+        guide = row['report'].get('travel_guide')
+        if row['status'] != 'done' or not isinstance(guide, dict):
+            abort(409, description='攻略生成完成后才能发布')
+        if mode == 'single': return [guide]
+        if mode != 'split': abort(400, description='请选择整篇或按候选地拆分')
+        try: return split_guides(guide, row['request'].get('trip', {}), render_markdown)
+        except ValueError as error: abort(409, description=str(error))
+
+    def published_rows(ids):
+        rows = []
+        for gid in ids:
+            guide = db().execute('SELECT id,title,destination,status,deleted_at FROM guides WHERE id=%s FOR UPDATE', (gid,)).fetchone()
+            if not guide or guide['deleted_at']:
+                abort(409, description='此前存档中有攻略已删除，请先在回收站恢复；不会重复创建或覆盖')
+            rows.append({key: guide[key] for key in ('id','title','destination','status')})
+        return rows
+
+    @app.get('/api/admin/travel-agent/tasks/<int:task_id>/publication')
+    def travel_publication_preview(task_id):
+        row = task(task_id)
+        mode = request.args.get('mode', 'single')
+        guides = publication_guides(row, mode)
+        return jsonify(guides=[{**guide, 'html':render_markdown(guide['body'])} for guide in guides])
+
+    @app.post('/api/admin/travel-agent/tasks/<int:task_id>/publish')
+    def travel_publish(task_id):
+        data = payload(); mode = data.get('mode'); status = data.get('status')
+        if mode not in ('single','split') or status not in ('draft','public'):
+            abort(400, description='请明确选择发布方式和公开或草稿状态')
+        db().execute('SELECT pg_advisory_xact_lock(74390511)')
+        row = task(task_id, lock=True)
+        publications = dict(row['request'].get('publications', {}))
+        if mode in publications:
+            return jsonify(guides=published_rows(publications[mode]), already_saved=True)
+        guides = publication_guides(row, mode)
+        existing = row['request'].get('guide_id') if mode == 'single' else None
+        if existing:
+            saved = published_rows([existing])
+            # A previous draft may have been edited: publish its current contents intact.
+            if status == 'public' and saved[0]['status'] == 'draft':
+                current = db().execute('SELECT * FROM guides WHERE id=%s', (existing,)).fetchone()
+                validate({**current, 'status':'public'})
+                db().execute("UPDATE guides SET status='public',updated_at=now(),revision=revision+1 WHERE id=%s", (existing,))
+                saved[0]['status'] = 'public'
+            elif status != saved[0]['status']:
+                abort(409, description='已存档攻略的状态已改变，请进入攻略编辑页处理')
+        else:
+            # Validate every candidate before inserting anything; one transaction for all.
+            values_list = [validate({**guide,'status':status,'verified_at':'','tags':['AI参考'],'sample':False}) for guide in guides]
+            saved = []
+            for values in values_list:
+                sync_tags(values)
+                new = db().execute('INSERT INTO guides('+','.join(values)+') VALUES('+','.join('%s' for _ in values)+') RETURNING id,title,destination,status', list(values.values())).fetchone()
+                saved.append(dict(new))
+        publications[mode] = [guide['id'] for guide in saved]
+        context = {**row['request'], 'publications':publications}
+        if mode == 'single': context['guide_id'] = saved[0]['id']
+        db().execute('UPDATE agent_tasks SET request=%s,updated_at=now() WHERE id=%s', (Jsonb(context), task_id))
+        for guide in saved:
+            audit('travel_agent.publish',guide['id'],{'task_id':task_id,'mode':mode,'status':guide['status'],'title':guide['title']})
+        db().commit()
+        return jsonify(guides=saved,already_saved=False),201
 
     @app.post('/api/admin/travel-agent/tasks')
     def travel_create():

@@ -63,6 +63,11 @@ const TravelPlanner = (() => {
     if(detail?.id===id&&detail.updated_at===data.task.updated_at)return;
     detail=data.task;renderDetail();
   }
+  function publicationActions(t){
+    const count=t.destinations?.length||0, mode=count>1?'split':'single', ids=t.publications?.[mode];
+    if(ids?.length)return `<div class="planner-publications"><strong>已存档 ${ids.length} 篇攻略</strong><p class="help">状态可在攻略管理中调整；重复操作不会覆盖编辑内容。</p><div class="actions">${ids.map((id,i)=>`<a class="button" href="#edit/${id}">${esc(mode==='split'?t.destinations[i]:'编辑攻略')} →</a><a class="button small" href="/?preview=1#guide/${id}" target="_blank" rel="noopener">预览 ↗</a>`).join('')}</div></div>`;
+    return `<button type="button" class="button primary" data-planner="publication-preview" data-mode="${mode}">${count>1?'拆分为 '+count+' 篇攻略发布':'预览并发布攻略'}</button>`;
+  }
   function renderDetail(){
     const t=detail,g=t.guide,complete=t.status==='done'&&g;
     const controls=['queued','running'].includes(t.status)?`<button type="button" class="button small" data-planner="cancel" data-id="${t.id}">停止生成</button>`:active(t.status)?'':`<button type="button" class="button small" data-planner="followup">继续修改</button>`;
@@ -71,8 +76,8 @@ const TravelPlanner = (() => {
       <details><summary>查看这次需求</summary><p class="agent-request">${esc(t.prompt)}</p><p class="help">${esc([t.trip.origin&&'出发：'+t.trip.origin,t.trip.dates,`${t.trip.days} 天 / ${t.trip.people} 人`,t.trip.rooms,t.trip.budget].filter(Boolean).join(' · '))}</p></details>
       ${complete?`<p class="planner-summary">${esc(g.summary)}</p><div class="planner-meta"><span>${esc(g.destination)} · ${g.days} 天</span><span>${esc(g.season)}</span><span>${esc(g.budget)}</span></div>
       <p class="planner-reference">${t.web_search_count?'已联网检索参考资料。':'未记录到联网检索，请另行核实。'} 门票、营业时间、价格和预约规则以出行时官方信息为准。</p>
-      <div class="planner-result-actions actions">${t.guide_id?`<a class="button primary" href="#edit/${t.guide_id}">编辑已存档攻略 →</a>`:`<button type="button" class="button primary" data-planner="save">存为攻略草稿</button>`}<button type="button" class="button" data-planner="copy">复制正文</button><a class="button" href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a><button type="button" class="button" data-planner="enrich">智能整理图文与路线</button></div>
-      ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}<article class="prose planner-prose">${t.html}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
+      <div class="planner-result-actions actions">${publicationActions(t)}${t.guide_id?`<a class="button primary" href="#edit/${t.guide_id}">编辑已存档攻略 →</a>`:`<button type="button" class="button primary" data-planner="save">存为攻略草稿</button>`}<button type="button" class="button" data-planner="copy">复制正文</button><a class="button" href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a><button type="button" class="button" data-planner="enrich">智能整理图文与路线</button></div>
+      ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}<div id="planner-publication"></div><article class="prose planner-prose">${t.html}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
       `<p class="agent-answer">${esc(t.result||'任务已加入队列，轮到后会开始研究。')}</p>${t.progress.length?`<details open><summary>正在参考的资料</summary><ul class="planner-progress">${t.progress.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`:''}`}`;
   }
   async function refresh(token=epoch){
@@ -141,6 +146,22 @@ const TravelPlanner = (() => {
         forgetTask(id);await loadDetail(token);toast('旅行任务记录已删除');busy=false;await refresh(token);
       }
       if(action==='cancel'){await api(endpoint+'/tasks/'+node.dataset.id+'/cancel',{method:'POST',body:{}});toast('已请求停止');await refresh(token);}
+      if(action==='publication-preview'){
+        busy=true;node.disabled=true;const id=detail.id,mode=node.dataset.mode;
+        const answer=await api(endpoint+'/tasks/'+id+'/publication?mode='+mode);
+        if(token!==epoch||selected!==id)return;
+        $('#planner-publication').innerHTML=`<section class="planner-publication-preview"><h3>${mode==='split'?'按候选地独立存档':'发布前预览'} · ${answer.guides.length} 篇</h3><p>检查下方内容后选择存为草稿或公开发布。公开发布后，所有访客都能看到。</p>${answer.guides.map(g=>`<details><summary>${esc(g.title)} · ${g.days} 天</summary><p>${esc(g.summary)}</p><article class="prose planner-prose">${g.html}</article><details><summary>参考资料</summary><pre>${esc(g.sources)}</pre></details></details>`).join('')}<div class="actions"><button type="button" class="button primary" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="public">公开发布这 ${answer.guides.length} 篇攻略</button><button type="button" class="button" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="draft">存为 ${answer.guides.length} 篇草稿</button><button type="button" class="button" data-planner="close-publication">收起预览</button></div></section>`;
+        $('#planner-publication').scrollIntoView({behavior:'smooth',block:'start'});
+      }
+      if(action==='close-publication')$('#planner-publication').replaceChildren();
+      if(action==='publish'){
+        const id=Number(node.dataset.id);if(id!==detail?.id)return;
+        busy=true;node.disabled=true;
+        const answer=await api(endpoint+'/tasks/'+id+'/publish',{method:'POST',body:{mode:node.dataset.mode,status:node.dataset.status}});
+        if(token!==epoch||selected!==id)return;
+        detail=null;await loadDetail(token);
+        toast(answer.already_saved?'已存档，未重复创建或覆盖':`已${node.dataset.status==='public'?'公开发布':'保存为草稿'} ${answer.guides.length} 篇攻略`);
+      }
       if(action==='save'){
         busy=true;node.disabled=true;const answer=await api(endpoint+'/tasks/'+detail.id+'/save',{method:'POST',body:{}});
         if(token!==epoch)return;detail=null;await loadDetail(token);toast(answer.already_saved?'这份攻略已存档':'已保存为草稿，可进入编辑后发布');
