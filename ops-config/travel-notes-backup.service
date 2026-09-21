@@ -1,0 +1,15 @@
+[Unit]
+Description=Back up Travel Notes database, files, code and configuration
+After=postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/travel-notes
+EnvironmentFile=/etc/travel-notes.env
+ExecStartPre=/opt/travel-notes/.venv/bin/python /opt/travel-notes/ops.py cleanup
+ExecStart=/opt/travel-notes/.venv/bin/python /opt/travel-notes/backup.py
+TimeoutStartSec=15min
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=512M
+UMask=0077

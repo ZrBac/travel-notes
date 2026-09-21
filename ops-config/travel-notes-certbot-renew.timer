@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Travel Notes HTTPS renewal twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:35:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=travel-notes-certbot-renew.service
+
+[Install]
+WantedBy=timers.target

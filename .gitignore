@@ -1,0 +1,45 @@
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+credentials.json
+credentials-*.json
+.codex/
+.ssh/
+.config/
+# Runtime content, imports, databases and backups
+.local-data/
+content/
+uploads/
+html-imports/
+image-cache/
+backups/
+private/
+work/
+*.db
+*.db-*
+*.sqlite*
+*.dump
+*.sql.gz
+*.tar.gz
+*.zip
+*.log
+# Generated environments and test artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+test-results/
+playwright-report/
+tests/*.png
+tests/*.jpg
+.DS_Store

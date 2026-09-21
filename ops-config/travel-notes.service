@@ -1,0 +1,26 @@
+[Unit]
+Description=Travel Notes personal travel archive
+After=network.target postgresql.service
+Wants=postgresql.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=travelnotes
+Group=travelnotes
+WorkingDirectory=/opt/travel-notes
+EnvironmentFile=/etc/travel-notes.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/travel-notes/.venv/bin/python -m gunicorn --bind 127.0.0.1:8000 --workers 2 --threads 2 --timeout 45 --access-logfile - --error-logfile - app:app
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/travel-notes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Travel Notes website agent task controller
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/travel-agent
+ExecStart=/opt/travel-notes/.venv/bin/python /opt/travel-agent/service.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+UMask=0077
+MemoryMax=256M
+TasksMax=48
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/travel-notes/uploads /opt/travel-notes /var/lib/travel-agent /var/lib/travel-agent-test /var/lib/travel-notes-ops /var/backups /run
+
+[Install]
+WantedBy=multi-user.target

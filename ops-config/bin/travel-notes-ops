@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/travel-notes/.venv/bin/python /opt/travel-notes/ops.py "$@"
