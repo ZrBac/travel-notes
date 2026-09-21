@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 import stat
 
-DIRECTORIES = ('static','ops-config','tests')
+DIRECTORIES = ('static','ops-config','tests','migrations')
 ROOT_EXTENSIONS = ('.py','.sql','.txt','.md')
 APP_MODULES = {'app.py','performance.py','html_imports.py','handbooks.py'}
 
