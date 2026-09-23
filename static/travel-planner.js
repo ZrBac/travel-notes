@@ -1,12 +1,13 @@
 /* Private research assistant; all content comes from authenticated APIs. */
 const TravelPlanner = (() => {
   let revision=0, timer=null, epoch=0, busy=false, selected=null, tasks=[], detail=null, nextBefore=null, expanded=false;
+  const checked=new Set();
   const endpoint='/admin/travel-agent';
   const active=status=>['queued','running','testing','publishing'].includes(status);
   const labels={queued:'排队中',running:'正在研究',testing:'正在测试',publishing:'正在发布',done:'已完成',failed:'未完成',cancelled:'已停止'};
   const fields=['destination','origin','dates','days','people','rooms','budget','preferences','excluded','mode'];
   const here=()=>state.user&&state.route.split('/')[0]==='travel-agent';
-  function stop(){clearTimeout(timer);timer=null;epoch++;$('#main')?.removeEventListener('click',handle);}
+  function stop(){TaskManager.cancel();checked.clear();clearTimeout(timer);timer=null;epoch++;$('#main')?.removeEventListener('click',handle);}
   function input(name,label,placeholder='',extra=''){
     return `<label>${label}<input name="${name}" placeholder="${placeholder}" ${extra}></label>`;
   }
@@ -30,7 +31,7 @@ const TravelPlanner = (() => {
         <div class="actions"><button class="button primary" type="submit">生成攻略参考</button><button class="button" type="button" data-planner="new">新建一趟旅行</button></div>
         <p id="planner-error" class="form-error" role="alert"></p>
       </form></section>
-      <section class="panel planner-history"><div class="panel-top"><h2>旅行灵感档案</h2><button class="button small" type="button" data-planner="refresh">刷新</button></div><div id="planner-tasks"></div><button id="planner-older" class="button small" type="button" data-planner="older" hidden>加载更早的记录</button></section></div>
+      <section class="panel planner-history"><div class="panel-top"><h2>旅行灵感档案</h2><button class="button small" type="button" data-planner="refresh">刷新</button></div>${TaskManager.bar('planner')}<div id="planner-tasks"></div><button id="planner-older" class="button small" type="button" data-planner="older" hidden>加载更早的记录</button></section></div>
       <section class="panel planner-detail" id="planner-detail" aria-live="polite"></section>`;
     service(data.service);renderTasks();bind();
     await loadDetail(token);if(token===epoch)schedule(token);
@@ -41,8 +42,8 @@ const TravelPlanner = (() => {
     $('#planner-service').className='planner-service';
   }
   function renderTasks(){
-    $('#planner-tasks').innerHTML=tasks.map(t=>`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${t.trip.mode==='compare'?'候选地比较':'旅行攻略'} · ${Number(t.trip.days)||4} 天 · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`).join('')||empty('下一次出发，从这里开始','生成过的攻略和后续修改都会保存在这里。');
-    $('#planner-older').hidden=!nextBefore;
+    $('#planner-tasks').innerHTML=tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${t.trip.mode==='compare'?'候选地比较':'旅行攻略'} · ${Number(t.trip.days)||4} 天 · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`,'planner',checked)).join('')||empty('下一次出发，从这里开始','生成过的攻略和后续修改都会保存在这里。');
+    TaskManager.update('planner',tasks,checked);$('#planner-older').hidden=!nextBefore;
   }
   function forgetTask(id){
     revision++;tasks=tasks.filter(t=>t.id!==id);selected=null;detail=null;
@@ -116,6 +117,7 @@ const TravelPlanner = (() => {
     const node=e.target.closest('[data-planner]');if(!node||busy)return;
     const action=node.dataset.planner,token=epoch;
     try{
+      if(TaskManager.select('planner',action,node,tasks,checked))return;
       if(action==='select'){selected=Number(node.dataset.id);detail=null;renderTasks();await loadDetail(token);if(token===epoch)$('#planner-detail').scrollIntoView({behavior:'smooth',block:'start'});}
       if(action==='refresh')await refresh(token);
       if(action==='older'){
@@ -137,13 +139,13 @@ const TravelPlanner = (() => {
         }
         form.prompt.focus();
       }
-      if(action==='delete'){
-        const id=Number(node.dataset.id);
-        if(!confirm('永久删除旅行任务 #'+id+' 的需求和生成结果？未存档内容将无法恢复，已存档攻略和图片会保留。若有后续任务，需先删除后续记录。'))return;
-        revision++;busy=true;node.disabled=true;
-        await api(endpoint+'/tasks/'+id,{method:'DELETE'});
-        if(token!==epoch)return;
-        forgetTask(id);await loadDetail(token);toast('旅行任务记录已删除');busy=false;await refresh(token);
+      if(action==='delete'||action==='delete-selected'){
+        const ids=action==='delete'?[Number(node.dataset.id)]:[...checked];if(!ids.length)return;
+        revision++;busy=true;const result=await TaskManager.remove(endpoint,ids);if(token!==epoch||!result)return;
+        const removed=new Set(result.ids);tasks=tasks.filter(t=>!removed.has(t.id));for(const id of removed)checked.delete(id);
+        if(removed.has(selected)){forgetTask(selected);await loadDetail(token);}
+        const form=$('#planner-form');if(removed.has(Number(form.dataset.parent))){delete form.dataset.parent;$('#planner-followup').textContent='关联记录已删除，当前填写内容将作为新任务提交。';}
+        renderTasks();toast('已删除 '+result.count+' 条任务记录');
       }
       if(action==='cancel'){await api(endpoint+'/tasks/'+node.dataset.id+'/cancel',{method:'POST',body:{}});toast('已请求停止');await refresh(token);}
       if(action==='publication-preview'){

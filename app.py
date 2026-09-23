@@ -985,3 +985,6 @@ from agent_api import register as register_agent
 register_agent(app, db, payload, audit)
 from travel_planner_api import register as register_travel_planner
 register_travel_planner(app, db, payload, audit, render_markdown, validate, sync_tags, DATA)
+
+from task_management import register as register_task_management
+register_task_management(app, db, payload, audit)

@@ -19,8 +19,10 @@ def register(app, db, payload, audit):
 
     @app.get('/api/admin/agent')
     def agent_index():
-        rows = db().execute("SELECT id,kind,prompt,status,parent_id,created_at,updated_at,report->>'outcome' AS outcome,report->>'repair_attempt' AS repair_attempt FROM agent_tasks WHERE request->>'assistant' IS DISTINCT FROM 'travel' ORDER BY id DESC LIMIT 50").fetchall()
-        return jsonify(tasks=rows, service=service())
+        before=request.args.get('before','')
+        if before and (not before.isascii() or not before.isdigit() or len(before)>18 or int(before)<1):abort(400,description='分页位置无效')
+        rows = db().execute("SELECT id,kind,prompt,status,parent_id,created_at,updated_at,report->>'outcome' AS outcome,report->>'repair_attempt' AS repair_attempt FROM agent_tasks WHERE request->>'assistant' IS DISTINCT FROM 'travel'"+(' AND id<%s' if before else '')+' ORDER BY id DESC LIMIT 51',(int(before),) if before else ()).fetchall()
+        return jsonify(tasks=rows[:50],next_before=rows[49]['id'] if len(rows)>50 else None,service=service())
 
     @app.get('/api/admin/agent/tasks/<int:task_id>')
     def agent_detail(task_id):
