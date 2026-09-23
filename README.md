@@ -177,3 +177,12 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 素材删除、恢复和彻底删除成功后，仅按服务器确认的结果更新当前列表，不再自动重载整个页面；未变化卡片保留原 DOM 与图片下载。切换素材分类复用当前元数据，手动刷新失败保留内容并提示重试；开始写操作时取消正在进行的刷新，防止旧响应覆盖删除结果。单张与批量操作均防重复提交，失败时保留列表。
 
 后台列表与素材选择器使用 `admin-images.js`：图片接近可视区域才下载，并发上限 2；切换页签、关闭图片弹窗或隐藏页面时取消不用的下载，离开页面时释放 Blob URL。数据请求优先于图片；切页取消未完成的低优先级预取，已完成的短期缓存仍可复用。图片继续通过原服务端鉴权，不放入持久浏览器存储。离线网络回归：`node tests/admin-navigation-network-browser.cjs`；素材超时与失败回归包含在 `tests/media-manage-browser.cjs`。
+
+
+## 全站加载与切换
+
+前后台共用 `travel-images.js`，列表、阅读正文、相册和助手结果仅加载临近视口的本地图片，并发最多 2 张，离开页面或关闭相册时取消过期下载。访客图片与 API 均使用匿名请求；管理员预览与后台保留会话鉴权。Blob URL 仅在当前页面内使用，图片原始地址与存档正文不改变，HTML 导出保持原样。
+
+前台只读 API 有 15 秒超时（包含读取响应正文），切换页面取消旧请求并防止旧响应或滚动行为覆盖新页面；写请求不因切页取消。错误页可重试。后台内置封面与封面预览使用现成 640px WebP，图片选择时仍保存原始地址。编辑器静态资源与表单数据并行加载，编辑内容与保存行为不变。
+
+网站管家通过任务列表中的更新时间检查详情变化，已完成且未变化的报告不重复下载；有活动任务时每 4 秒检查，空闲时每 15 秒检查。旅游助手结果和后台预览图片也进入可取消的图片队列。回归检查：`node tests/public-loading-browser.cjs`、`node tests/agent-refresh-browser.cjs`，以及既有 editorial、admin-loading、admin-navigation-network、media-manage 和 dialog-dismiss 浏览器检查。

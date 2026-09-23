@@ -1,6 +1,6 @@
 /* The existing administrator session protects every task endpoint. */
 const TravelAgent = (()=>{
-  let revision=0, timer=null, selected=null, generation=0, busy=false, service={};
+  let revision=0, timer=null, selected=null, generation=0, busy=false, service={}, working=false;
   const labels={queued:'等待执行',running:'正在处理',testing:'正在测试',ready:'等待发布',done:'已完成',failed:'未完成',cancelled:'已取消',publishing:'正在发布',published:'已发布',manual:'需要单独部署'};
   function statusLabel(task){const r=task.report||task;if(active(task.status)&&Number(r.repair_attempt)>0)return task.status==='testing'?'修复后复测':'自动修复中';if(task.status==='done'&&r.outcome==='no_changes')return '未产生改动';if(task.status==='done'&&r.outcome==='documentation')return '仅完成说明';return labels[task.status]||task.status;}
   const kinds={change:'功能建设',diagnose:'故障诊断',chat:'咨询',publish:'发布',rollback:'回退'};
@@ -9,7 +9,7 @@ const TravelAgent = (()=>{
   async function page(gen){
     stop();const token=generation;selected=null;
     const data=await api('/admin/agent');if(gen!==state.generation||token!==generation)return;
-    service=data.service;
+    service=data.service;working=data.tasks.some(t=>active(t.status));
     $('#main').innerHTML=heading('网站管家','把需求交给管家，随时回来查看处理结果。')+`
       <section class="panel agent-overview" id="agent-overview"></section><section class="panel"><div class="panel-top"><div><h2>常用操作</h2><p class="help">新增账号直接在表单办理；功能修改交给下方助手。任务测试失败时会自动尝试修复一次，仍由你决定是否发布。</p></div><button type="button" class="button secondary" data-admin-accounts>管理员管理</button></div></section>
       <div class="agent-layout"><section class="panel agent-compose"><h2>安排一个任务</h2>
@@ -52,8 +52,9 @@ const TravelAgent = (()=>{
   async function refresh(token=generation){
     if(token!==generation||state.route!=='agent'||busy||document.hidden)return;
     const version=revision;const data=await api('/admin/agent');if(token!==generation||version!==revision||busy)return;
-    service=data.service;renderOverview();renderTasks(data.tasks);
-    if(selected){const id=selected;let detail;
+    service=data.service;working=data.tasks.some(t=>active(t.status));renderOverview();renderTasks(data.tasks);
+    const current=data.tasks.find(t=>t.id===selected);
+    if(selected&&(!current||active(current.status)||$('#agent-detail').dataset.updated!==current.updated_at)){const id=selected;let detail;
       try{detail=await api('/admin/agent/tasks/'+id);}catch(error){
         if(token!==generation||version!==revision||id!==selected||busy)return;
         if(error.status!==404)throw error;
@@ -64,7 +65,7 @@ const TravelAgent = (()=>{
       if($('#agent-detail').dataset.updated!==signature){const opened=[...document.querySelectorAll('#agent-detail details')].map(d=>d.open);renderDetail(detail.task);$('#agent-detail').dataset.updated=signature;document.querySelectorAll('#agent-detail details').forEach((d,i)=>{if(opened[i])d.open=true;});}
     }}
   }
-  function schedule(token){clearTimeout(timer);timer=setTimeout(async()=>{if(token!==generation||state.route!=='agent')return;try{await refresh(token);}catch(e){if($('#agent-overview'))$('#agent-overview').textContent=e.message;}finally{if(token===generation&&state.route==='agent')schedule(token);}},4000);}
+  function schedule(token){clearTimeout(timer);timer=setTimeout(async()=>{if(token!==generation||state.route!=='agent')return;try{await refresh(token);}catch(e){if($('#agent-overview'))$('#agent-overview').textContent=e.message;}finally{if(token===generation&&state.route==='agent')schedule(token);}},working?4000:15000);}
   function bind(){
     $('#agent-task-form').addEventListener('submit',async e=>{
       e.preventDefault();e.stopImmediatePropagation();if(busy)return;const form=e.target;if(!form.reportValidity())return;

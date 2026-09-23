@@ -43,13 +43,24 @@ function toast(message, error=false) { const node=$('#toast'); node.textContent=
 // Ordinary pages use the same anonymous view even while the admin tab is signed in.
 // Preview only changes the view: the server still requires a real admin session.
 const adminPreview = new URLSearchParams(location.search).get('preview') === '1';
+const PublicImages=createTravelImages({roots:['#app','#memory-viewer[open]'],credentials:adminPreview?'same-origin':'omit',attribute:'data-travel-src'});
+let publicReads=new AbortController();
+function cancelPublicReads(){publicReads.abort();publicReads=new AbortController();}
 async function api(path, options={}) {
-  const headers = {'X-CSRF-Token':state.csrf, ...options.headers};
-  if (options.body && !(options.body instanceof FormData)) { headers['Content-Type']='application/json'; options.body=JSON.stringify(options.body); }
-  const response=await fetch(`/api${path}`, {...options,headers,credentials:adminPreview?'same-origin':'omit'});
-  let data; try {data=await response.json();} catch {throw new Error('服务暂时不可用，请稍后重试');}
-  if (!response.ok) {const error=new Error(data.error||'操作未完成，请稍后重试');error.status=response.status;throw error;}
-  return data;
+  const read=['GET','HEAD'].includes((options.method||'GET').toUpperCase());
+  const headers={'X-CSRF-Token':state.csrf,...options.headers};let body=options.body;
+  if(body&&!(body instanceof FormData)){headers['Content-Type']='application/json';body=JSON.stringify(body);}
+  const controller=read?new AbortController():null,source=publicReads.signal;
+  let timedOut=false;const abort=()=>controller.abort();
+  if(read)source.addEventListener('abort',abort,{once:true});
+  const timer=read?setTimeout(()=>{timedOut=true;controller.abort();},15000):null;
+  try{
+    const response=await fetch('/api'+path,{...options,body,headers,credentials:adminPreview?'same-origin':'omit',...(read?{signal:controller.signal,priority:'high'}:{})});
+    let data;try{data=await response.json();}catch(e){if(controller?.signal.aborted)throw e;throw Error('服务暂时不可用，请稍后重试');}
+    if(!response.ok){const error=Error(data.error||'操作未完成，请稍后重试');error.status=response.status;throw error;}
+    return data;
+  }catch(error){if(timedOut)throw Error('加载超时，请点击重试。');throw error;}
+  finally{clearTimeout(timer);if(read)source.removeEventListener('abort',abort);}
 }
 async function loadGuides(){state.guides=(await api('/guides')).guides;}
 function updateShell(view='home') {
@@ -69,7 +80,7 @@ function heading(title, description, eyebrow='旅行收藏') {
   return `<section class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></section>`;
 }
 function card(guide, trash=false) {
-  return `<article class="guide-card"><a href="#guide/${guide.id}" aria-label="查看攻略：${esc(guide.title)}"><div class="card-image-wrap"><img class="card-image" src="${esc(travelImageUrl(guide.cover,640))}" alt="${esc(guide.destination)}攻略封面" loading="lazy"><span class="place-badge">${icon('pin')}${esc(guide.country?`${guide.country} · ${guide.destination}`:guide.destination)}</span>${guide.sample?'<span class="sample-badge">示例攻略</span>':''}</div><div class="card-body"><h3 class="card-title">${esc(guide.title)}</h3><p class="card-summary">${esc(guide.summary||'一段新的旅程，等你慢慢记录。')}</p><div class="card-tags">${guide.tags.slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${state.admin&&guide.status!=='public'?`<span class="status-badge ${guide.status}">${statusName[guide.status]}</span>`:''}</div></div><div class="card-footer"><span>${icon('clock')}${guide.days} 天行程</span><span>${date(guide.updated_at)} 更新</span></div></a>${trash?`<div class="card-admin"><button class="button secondary small" data-action="restore" data-id="${guide.id}">${icon('restore')}恢复攻略</button></div>`:''}</article>`;
+  return `<article class="guide-card"><a href="#guide/${guide.id}" aria-label="查看攻略：${esc(guide.title)}"><div class="card-image-wrap"><img class="card-image" data-travel-src="${esc(travelImageUrl(guide.cover,640))}" alt="${esc(guide.destination)}攻略封面" loading="lazy"><span class="place-badge">${icon('pin')}${esc(guide.country?`${guide.country} · ${guide.destination}`:guide.destination)}</span>${guide.sample?'<span class="sample-badge">示例攻略</span>':''}</div><div class="card-body"><h3 class="card-title">${esc(guide.title)}</h3><p class="card-summary">${esc(guide.summary||'一段新的旅程，等你慢慢记录。')}</p><div class="card-tags">${guide.tags.slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${state.admin&&guide.status!=='public'?`<span class="status-badge ${guide.status}">${statusName[guide.status]}</span>`:''}</div></div><div class="card-footer"><span>${icon('clock')}${guide.days} 天行程</span><span>${date(guide.updated_at)} 更新</span></div></a>${trash?`<div class="card-admin"><button class="button secondary small" data-action="restore" data-id="${guide.id}">${icon('restore')}恢复攻略</button></div>`:''}</article>`;
 }
 function empty(title,copy,action=''){return `<div class="empty">${icon('map')}<h3>${title}</h3><p>${copy}</p>${action}</div>`;}
 function home(){Footprints.home(card);}
@@ -103,12 +114,12 @@ function renderCards(){
 }
 function destinations(){
   updateShell('destinations');const groups=new Map();state.guides.forEach(g=>{const list=groups.get(g.destination)||[];list.push(g);groups.set(g.destination,list);});
-  $('#app').innerHTML=heading('目的地','按地点浏览已收录的旅行攻略。','想去的远方')+`<div class="destination-grid">${[...groups].map(([name,list])=>`<button class="destination-card" data-action="destination" data-value="${esc(name)}"><img src="${esc(travelImageUrl(list[0].cover,640))}" alt="${esc(name)}旅行封面" loading="lazy"><p>${esc(list[0].country||'下一站')}</p><h2>${esc(name)}</h2><p>${list.length} 篇攻略 · 探索这个目的地 ↗</p></button>`).join('')||empty('目的地清单还是空的','新建攻略时填写目的地，这里就会自动整理。')}</div>`;
+  $('#app').innerHTML=heading('目的地','按地点浏览已收录的旅行攻略。','想去的远方')+`<div class="destination-grid">${[...groups].map(([name,list])=>`<button class="destination-card" data-action="destination" data-value="${esc(name)}"><img data-travel-src="${esc(travelImageUrl(list[0].cover,640))}" alt="${esc(name)}旅行封面" loading="lazy"><p>${esc(list[0].country||'下一站')}</p><h2>${esc(name)}</h2><p>${list.length} 篇攻略 · 探索这个目的地 ↗</p></button>`).join('')||empty('目的地清单还是空的','新建攻略时填写目的地，这里就会自动整理。')}</div>`;
 }
 function tags(){updateShell('tags');const groups=new Map();state.guides.forEach(g=>g.tags.forEach(t=>groups.set(t,(groups.get(t)||0)+1)));$('#app').innerHTML=heading('灵感标签','按主题查找旅行攻略。','LITTLE IDEAS, BIG ADVENTURES')+`<div class="tag-grid">${[...groups].sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<button class="tag-tile" data-action="tag" data-value="${esc(t)}">${icon('tag')}<span><strong>${esc(t)}</strong><small>${n} 篇相关攻略</small></span></button>`).join('')||empty('等待第一份灵感','编辑攻略时添加标签，方便下次找到它。')}</div>`;}
 async function detail(id, generation){
   const {guide:g}=await api(`/guides/${id}?view=read`);if(state.load!==generation)return;updateShell('guide');document.title=`${g.title} · ${state.site?.site_name||'行笺'}`;
-  $('#app').innerHTML=`<div class="detail-top"><a class="back-link" href="#${g.deleted_at?'trash':g.tags.includes(autumnTag)?'autumn':'guides'}">${icon('back')}返回${g.deleted_at?'回收站':g.tags.includes(autumnTag)?'七地对比':'攻略收藏'}</a>${state.admin?`<div class="detail-actions">${g.deleted_at?`<button class="button secondary" data-action="restore" data-id="${g.id}">${icon('restore')}恢复攻略</button>`:`<a class="button secondary" href="/admin#edit/${g.id}">${icon('edit')}编辑攻略</a><button class="button ghost" data-action="delete" data-id="${g.id}" aria-label="将攻略移入回收站">${icon('trash')}</button>`}</div>`:''}</div><img class="detail-cover" src="${esc(travelImageUrl(g.cover,1280))}" alt="${esc(g.destination)}攻略封面"><div class="detail-layout"><article><header class="article-header">${g.sample?'<span class="sample-note">示例攻略 · 可登录后编辑为自己的旅行记录</span>':''}<h1>${esc(g.title)}</h1><p class="summary">${esc(g.summary)}</p><div class="article-meta"><span>${icon('pin')} ${esc(g.country)} · ${esc(g.destination)}</span><span>${date(g.updated_at)} 更新</span>${state.admin?`<span class="status-badge ${g.status}">${statusName[g.status]}${g.deleted_at?' · 已删除':''}</span>`:''}</div></header><div class="prose">${g.html||'<p>这篇攻略还在慢慢整理中。</p>'}</div>${g.sources?`<section class="source-box"><h3>参考资料与来源</h3>${esc(g.sources)}</section>`:''}</article><aside class="detail-aside"><h3>这段旅程，一眼看懂</h3>${[['clock','建议天数',`${g.days} 天`],['sun','适合季节',g.season||'尚未填写'],['money','人均预算',g.budget||'尚未填写'],['map','目的地',g.destination],['book','最后核实',g.verified_at||'出发前记得核实']].map(([i,l,v])=>`<div class="info-row">${icon(i)}<span><small>${l}</small><strong>${esc(v)}</strong></span></div>`).join('')}<div class="aside-tags">${g.tags.map(t=>`<button class="chip" data-action="tag" data-value="${esc(t)}"># ${esc(t)}</button>`).join('')}</div></aside></div>`;
+  $('#app').innerHTML=`<div class="detail-top"><a class="back-link" href="#${g.deleted_at?'trash':g.tags.includes(autumnTag)?'autumn':'guides'}">${icon('back')}返回${g.deleted_at?'回收站':g.tags.includes(autumnTag)?'七地对比':'攻略收藏'}</a>${state.admin?`<div class="detail-actions">${g.deleted_at?`<button class="button secondary" data-action="restore" data-id="${g.id}">${icon('restore')}恢复攻略</button>`:`<a class="button secondary" href="/admin#edit/${g.id}">${icon('edit')}编辑攻略</a><button class="button ghost" data-action="delete" data-id="${g.id}" aria-label="将攻略移入回收站">${icon('trash')}</button>`}</div>`:''}</div><img class="detail-cover" fetchpriority="high" data-travel-src="${esc(travelImageUrl(g.cover,1280))}" alt="${esc(g.destination)}攻略封面"><div class="detail-layout"><article><header class="article-header">${g.sample?'<span class="sample-note">示例攻略 · 可登录后编辑为自己的旅行记录</span>':''}<h1>${esc(g.title)}</h1><p class="summary">${esc(g.summary)}</p><div class="article-meta"><span>${icon('pin')} ${esc(g.country)} · ${esc(g.destination)}</span><span>${date(g.updated_at)} 更新</span>${state.admin?`<span class="status-badge ${g.status}">${statusName[g.status]}${g.deleted_at?' · 已删除':''}</span>`:''}</div></header><div class="prose">${PublicImages.prepareHTML(g.html||'<p>这篇攻略还在慢慢整理中。</p>')}</div>${g.sources?`<section class="source-box"><h3>参考资料与来源</h3>${esc(g.sources)}</section>`:''}</article><aside class="detail-aside"><h3>这段旅程，一眼看懂</h3>${[['clock','建议天数',`${g.days} 天`],['sun','适合季节',g.season||'尚未填写'],['money','人均预算',g.budget||'尚未填写'],['map','目的地',g.destination],['book','最后核实',g.verified_at||'出发前记得核实']].map(([i,l,v])=>`<div class="info-row">${icon(i)}<span><small>${l}</small><strong>${esc(v)}</strong></span></div>`).join('')}<div class="aside-tags">${g.tags.map(t=>`<button class="chip" data-action="tag" data-value="${esc(t)}"># ${esc(t)}</button>`).join('')}</div></aside></div>`;
   const sections=[...document.querySelectorAll('.prose h2')];
   if(sections.length>=8){
     const nav=document.createElement('nav');nav.className='article-jump';nav.setAttribute('aria-label','攻略目录');
@@ -160,6 +171,7 @@ document.addEventListener('click',async event=>{
   const close=event.target.closest('[data-close-login]');if(close){$('#login-dialog').close();state.afterLogin=null;return;}
   const node=event.target.closest('[data-action]');if(!node)return;const action=node.dataset.action,value=node.dataset.value,id=node.dataset.id;
   try{
+    if(action==='retry-page')await route();
     if(action==='login')location.href='/admin';
     if(action==='logout'){if(state.dirty&&!confirm('还有未保存的改动，确定退出登录？'))return;const data=await api('/logout',{method:'POST'});state.admin=false;state.csrf=data.csrf;state.dirty=false;clearFilters();await loadGuides();location.hash='home';home();toast('已退出管理空间');}
     if(action==='country'){state.country=value;guidesHome();}
@@ -178,10 +190,10 @@ async function route(){
   const hash=location.hash.slice(1)||'home';
   if(/^(edit|new)(\/|$)/.test(hash)){location.href='/admin#'+hash;return;}
   if(state.dirty&&hash!==state.route){if(!confirm('还有未保存的改动，确定离开编辑页面？')){history.replaceState(null,'',`#${state.route}`);return;}state.dirty=false;}
-  state.route=hash;const generation=++state.load;const [view,id]=hash.split('/');document.title=(state.site?.site_name||'行笺')+' · 攻略与旅行足迹';
+  cancelPublicReads();PublicImages.pause();state.route=hash;const generation=++state.load;const [view,id]=hash.split('/');document.title=(state.site?.site_name||'行笺')+' · 攻略与旅行足迹';
   if(['guide','edit','record'].includes(view)&&!/^\d+$/.test(id||'')){location.hash='home';return;}
-  $('#app').innerHTML='<div class="loading">正在整理你的旅行灵感…</div>';
-  try{if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='tags')tags();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();window.scrollTo(0,0);}catch(error){if(state.load!==generation)return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<a class="button secondary" href="#home">返回攻略收藏</a>');}
+  const app=$('#app');app.inert=true;app.setAttribute('aria-busy','true');const loading=setTimeout(()=>{if(state.load===generation)app.innerHTML='<div class="loading">正在整理你的旅行灵感…</div>';},120);
+  try{if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='tags')tags();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#home">返回攻略收藏</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
 }
 window.addEventListener('hashchange',route);
 window.addEventListener('beforeunload',event=>{if(state.dirty){event.preventDefault();event.returnValue='';}});

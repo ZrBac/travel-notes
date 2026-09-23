@@ -102,5 +102,5 @@ const TravelEditor=(()=>{
   try{const result=await ctx.preview(body);if(!owns(ctx))return;ctx.ready=false;ctx.editor.value=result.html;ctx.original=body;ctx.textarea.value=body;ctx.baseline=serialized(ctx,ctx.editor.value);ctx.ready=true;ctx.onChange();}finally{ctx.pending=false;}
  }
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&current?.wrap.classList.contains('is-focused')&&!document.querySelector('dialog[open]')){current.wrap.querySelector('[data-writing=focus]').click();}});
- return {mount,destroy,sync,replace,remember,insertImage,get busy(){return !!(current?.pending||current?.uploading);}};
+ return {preload:()=>assets().catch(()=>{}),mount,destroy,sync,replace,remember,insertImage,get busy(){return !!(current?.pending||current?.uploading);}};
 })();
