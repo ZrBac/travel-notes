@@ -1,4 +1,4 @@
-"""File fingerprints and on-demand display images; originals remain untouched."""
+"""File fingerprints and pre-generated display images; originals remain untouched."""
 import hashlib
 import os
 import re
@@ -10,6 +10,7 @@ from PIL import Image, ImageOps
 
 BASE=Path(__file__).parent
 DATA=Path(os.environ.get('TRAVEL_DATA','/var/lib/travel-notes'))
+IMAGE_WIDTHS=(320,480,640,1280)
 
 
 @lru_cache(maxsize=64)
@@ -31,25 +32,43 @@ def page_html(filename):
 
 
 def image_variant_path(path,width):
-    if width not in (640,1280): raise ValueError('Unsupported display size')
+    if width not in IMAGE_WIDTHS: raise ValueError('Unsupported display size')
     stat=path.stat()
     key=hashlib.sha256(f'{path}:{stat.st_mtime_ns}:{stat.st_size}:{width}:webp78-v1'.encode()).hexdigest()
     return DATA/'image-cache'/(key+'.webp')
 
 
+def _save_variant(picture,result,width):
+    result.parent.mkdir(exist_ok=True)
+    with picture.copy() as scaled:
+        scaled.thumbnail((width,width))
+        with tempfile.NamedTemporaryFile(dir=result.parent,suffix='.webp',delete=False) as temporary:
+            temp=Path(temporary.name)
+        try:
+            scaled.save(temp,'WEBP',quality=78,method=4)
+            temp.chmod(0o640);temp.replace(result)
+        finally: temp.unlink(missing_ok=True)
+
+
+def prepare_image_variants(path):
+    """Decode once; finish display sizes before an upload becomes visible."""
+    missing=[(width,image_variant_path(path,width)) for width in IMAGE_WIDTHS]
+    missing=[(width,result) for width,result in missing if not result.is_file()]
+    if missing:
+        with Image.open(path) as original, ImageOps.exif_transpose(original) as oriented, oriented.convert('RGB') as picture:
+            for width,result in missing:_save_variant(picture,result,width)
+
+
+def remove_image_variants(path):
+    if path.is_file():
+        for width in IMAGE_WIDTHS:image_variant_path(path,width).unlink(missing_ok=True)
+
+
 def image_variant(path,width):
     result=image_variant_path(path,width)
-    cache=result.parent;cache.mkdir(exist_ok=True)
     if not result.is_file():
-        with Image.open(path) as original:
-            picture=ImageOps.exif_transpose(original).convert('RGB')
-            picture.thumbnail((width,width))
-            with tempfile.NamedTemporaryFile(dir=cache,suffix='.webp',delete=False) as temporary:
-                temp=Path(temporary.name)
-            try:
-                picture.save(temp,'WEBP',quality=78,method=4)
-                temp.chmod(0o640);temp.replace(result)
-            finally: temp.unlink(missing_ok=True)
+        with Image.open(path) as original, ImageOps.exif_transpose(original) as oriented, oriented.convert('RGB') as picture:
+            _save_variant(picture,result,width)
     return result
 
 

@@ -87,7 +87,7 @@ class MediaBatchTests(unittest.TestCase):
         self.login();names=self.seed_media();paths=[]
         for name in names[:2]:
             source=Path(base.TEMP.name)/'uploads'/name;paths.append(source)
-            for width in (640,1280):
+            for width in (320,480,640,1280):
                 cache=image_variant_path(source,width);cache.parent.mkdir(exist_ok=True);cache.write_bytes(b'cached');paths.append(cache)
         self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names[:2]}).status_code,200)
         response=self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names[:2]})

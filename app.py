@@ -23,7 +23,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.exceptions import HTTPException
 from database import connect
 from handbooks import HANDBOOK_CSP
-from performance import fingerprint, image_variant, image_variant_path, lazy_image, page_html
+from performance import IMAGE_WIDTHS, prepare_image_variants, remove_image_variants, fingerprint, image_variant, image_variant_path, lazy_image, page_html
 from html_imports import ImportProblem, MAX_UPLOAD, STATIC_HANDBOOK_CSP, parse_upload
 
 BASE = Path(__file__).parent
@@ -823,12 +823,13 @@ def upload():
             with ImageOps.exif_transpose(original) as oriented, oriented.convert('RGB') as picture:
                 picture.save(path,'WEBP',quality=85)
                 width,height=picture.size
+            prepare_image_variants(path)
             db().execute('INSERT INTO media(filename,name,bytes,width,height) VALUES(%s,%s,%s,%s,%s)',(filename,(file.filename or filename)[:150],path.stat().st_size,width,height))
             audit('media.upload',filename);db().commit()
     except (UnidentifiedImageError,OSError,Image.DecompressionBombError):
-        path.unlink(missing_ok=True);abort(400,description='图片损坏或实际格式无法读取，请重新导出为 JPG/JPEG、PNG 或 WebP 后上传')
+        remove_image_variants(path);path.unlink(missing_ok=True);abort(400,description='图片损坏或实际格式无法读取，请重新导出为 JPG/JPEG、PNG 或 WebP 后上传')
     except Exception:
-        path.unlink(missing_ok=True);raise
+        remove_image_variants(path);path.unlink(missing_ok=True);raise
     return jsonify(url='/media/'+filename),201
 
 def media_refs(filename):
@@ -873,7 +874,7 @@ def purge_media_rows(rows,action):
         if path.is_symlink(): abort(409,description='图片文件状态异常，请联系管理员')
         if path.is_file():
             files.append(path)
-            files.extend(image_variant_path(path,width) for width in (640,1280) if image_variant_path(path,width).is_file())
+            files.extend(image_variant_path(path,width) for width in IMAGE_WIDTHS if image_variant_path(path,width).is_file())
     staging=DATA/'media-purge'/secrets.token_hex(16);staging.mkdir(parents=True,mode=0o700)
     moves=[(path,staging/str(i)) for i,path in enumerate(files)]
     (staging/'manifest.json').write_text(json.dumps({'filenames':[r['filename'] for r in rows],'files':[{ 'source':str(a.relative_to(DATA)),'staged':b.name} for a,b in moves]}))
@@ -950,7 +951,7 @@ def media(filename):
     if not path.is_file(): abort(404)
     width=request.args.get('w')
     if width:
-        if width not in ('640','1280'): abort(400,description='不支持的图片尺寸')
+        if width not in tuple(map(str,IMAGE_WIDTHS)): abort(400,description='不支持的图片尺寸')
         path=image_variant(path,int(width))
     return send_file(path,mimetype='image/webp')
 

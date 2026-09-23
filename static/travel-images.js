@@ -14,7 +14,8 @@ function createTravelImages({roots,credentials,attribute='data-admin-src'}){
    const controller=new AbortController();entry.controller=controller;active.add(controller);
    void(async()=>{
     try{
-     const response=await fetch(entry.url,{credentials,priority:img.getAttribute('fetchpriority')==='high'?'high':'low',signal:controller.signal});
+     const displayURL=typeof travelDisplayImageUrl==='function'?travelDisplayImageUrl(entry.url,img):entry.url;
+     const response=await fetch(displayURL,{credentials,priority:img.getAttribute('fetchpriority')==='high'?'high':'low',signal:controller.signal});
      if(!response.ok)throw Error('Image unavailable');
      const blob=await response.blob();
      if(controller.signal.aborted||!img.isConnected||entries.get(img)!==entry)return;
