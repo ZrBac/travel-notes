@@ -10,9 +10,12 @@ const root=path.resolve(__dirname,'..'),pixel=Buffer.from('iVBORw0KGgoAAAANSUhEU
  if(u.pathname.startsWith('/api/')){
   if(u.pathname==='/api/session')return r.fulfill({json:{csrf:'fixture',user:{username:'tester',display_name:'测试'}}});
   if(u.pathname==='/api/admin/media')return r.fulfill({json:{media,defaults:[{url:'/static/assets/lake.jpg',name:'湖畔'}]}});
-  if(u.pathname==='/api/admin/media/bulk'){
-   const d=r.request().postDataJSON();operations.push(d);assert.equal(r.request().method(),'POST');assert.equal(r.request().headers()['x-csrf-token'],'fixture');
-   for(const filename of d.filenames){const row=media.find(m=>m.filename===filename);assert.ok(row);if(d.action==='trash')assert.equal(row.references.length,0);row.deleted_at=d.action==='trash'?'2026-09-23':null;}
+  if(u.pathname==='/api/admin/taxonomy')return r.fulfill({json:{categories:[],tags:[]}});
+  if(u.pathname==='/api/admin/guides')return r.fulfill({json:{guides:[],total:0,page:1,pages:1}});
+  if(u.pathname==='/api/records')return r.fulfill({json:{records:[],total:0,page:1,pages:1}});
+  if(u.pathname.startsWith('/api/admin/media/')){
+   const d=r.request().postDataJSON();if(!d.filenames)d.filenames=[u.pathname.split('/').pop()];operations.push(d);assert.equal(r.request().method(),'POST');assert.equal(r.request().headers()['x-csrf-token'],'fixture');
+   for(const filename of d.filenames){const row=media.find(m=>m.filename===filename);assert.ok(row);if(d.action==='trash')assert.equal(row.references.length,0);if(d.action==='purge'){assert.ok(row.deleted_at);assert.equal(row.references.length,0);media.splice(media.indexOf(row),1);}else row.deleted_at=d.action==='trash'?'2026-09-23':null;}
    return r.fulfill({json:{ok:true,count:d.filenames.length}});
   }
   throw Error('Unexpected API '+u.pathname);
@@ -31,10 +34,24 @@ const root=path.resolve(__dirname,'..'),pixel=Buffer.from('iVBORw0KGgoAAAANSUhEU
  await p.locator('.media-check:not(:disabled)').nth(0).check();await p.locator('.media-check:not(:disabled)').nth(1).check();assert.ok(await p.locator('#media-select-page').evaluate(n=>n.indeterminate));
  await p.locator('[data-action=media-bulk]').click();await p.waitForFunction(()=>document.querySelector('#toast').textContent==='已将 2 张图片移入回收站'&&!state.mediaBusy);await p.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));
  assert.equal(operations[0].action,'trash');assert.equal(operations[0].filenames.length,2);assert.equal(await p.locator('.media-check:checked').count(),0);
- await p.locator('[data-action=media-tab][data-value=trash]').click();await p.waitForFunction(()=>document.querySelectorAll('.media-card').length===2);await p.locator('#media-select-page').check();await p.locator('[data-action=media-bulk]').click();await p.waitForFunction(()=>document.querySelector('#toast').textContent==='已恢复 2 张图片'&&!state.mediaBusy);await p.waitForSelector('#media-grid .empty');assert.equal(operations[1].action,'restore');
+ await p.locator('[data-action=media-tab][data-value=trash]').click();await p.waitForFunction(()=>document.querySelectorAll('.media-card').length===2);await p.locator('#media-select-page').check();await p.locator('[data-action=media-bulk][data-value=restore]').click();await p.waitForFunction(()=>document.querySelector('#toast').textContent==='已恢复 2 张图片'&&!state.mediaBusy);await p.waitForSelector('#media-grid .empty');assert.equal(operations[1].action,'restore');
  await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');await p.locator('.media-check:not(:disabled)').first().check();await p.locator('[data-action=media-page][data-page="2"]').click();assert.equal(await p.locator('.media-check:checked').count(),0,'selection cannot silently spill into another page');
  await p.locator('[data-action=media-tab][data-value=defaults]').click();await p.waitForFunction(()=>document.querySelector('#media-selection')?.hidden===true);assert.equal(await p.locator('.media-check').count(),0);
- await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);
+ await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');
+ const checkbox=await p.locator('.media-check:not(:disabled)').first().boundingBox(),target=await p.locator('.media-select').first().boundingBox();assert.equal(checkbox.width,21);assert.equal(target.width,44);assert.equal((await p.locator('.media-select').first().innerText()).trim(),'');
+ await p.locator('.media-check:not(:disabled)').nth(0).check();await p.locator('.media-check:not(:disabled)').nth(1).check();
+ await p.locator('[data-action=media-bulk][data-value=trash]').click();await p.waitForFunction(()=>!state.mediaBusy&&state.mediaSelected.size===0);
+ await p.locator('[data-action=media-tab][data-value=trash]').click();await p.waitForFunction(()=>document.querySelectorAll('.media-card').length===2);
+ assert.equal(await p.locator('[data-action=media-update][data-value=purge]').count(),2);
+ const before=operations.length;accept=false;await p.locator('[data-action=media-update][data-value=purge]').first().click();assert.equal(operations.length,before);accept=true;
+ await p.locator('[data-action=media-update][data-value=purge]').first().click();await p.waitForFunction(()=>document.querySelectorAll('.media-card').length===1);assert.equal(operations.at(-1).action,'purge');
+ await p.locator('#media-select-page').check();await p.locator('[data-action=media-bulk][data-value=purge]').click();await p.waitForSelector('#media-grid .empty');assert.equal(operations.at(-1).action,'purge');
+ for(const [route,label,active]of [['guides','攻略列表切换','攻略列表'],['trash','攻略列表切换','回收站'],['records','足迹列表切换','足迹列表'],['record-trash','足迹列表切换','回收站']]){
+  await p.evaluate(h=>location.hash=h,route);await p.waitForSelector('.tabs[aria-label="'+label+'"]');await p.waitForFunction(t=>document.querySelector('.tabs .active')?.textContent===t,active);
+  assert.equal(await p.locator('.sidebar a[href="#trash"]').count(),0);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'tabs overflow '+width);
+ }
+ await p.evaluate(()=>location.hash='media');await p.waitForSelector('[data-action=media-tab][data-value=active]');await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');
+ assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);
  if(process.env.MEDIA_SCREENSHOT_DIR)await p.screenshot({path:process.env.MEDIA_SCREENSHOT_DIR+'/media-'+width+'.png',fullPage:false});
  assert.deepEqual(errors,[]);await context.close();
-}console.log('PASS: clear labels, no header refresh, usage links, protected used images, selection/cancel/delete/restore/page reset, desktop and mobile');}finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1)});
+}console.log('PASS: clear labels, no header refresh, usage links, protected used images, selection/cancel/delete/restore/purge/page reset, unified trash tabs, desktop and mobile');}finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1)});

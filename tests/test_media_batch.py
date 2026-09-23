@@ -76,6 +76,45 @@ class MediaBatchTests(unittest.TestCase):
         self.login();self.assertEqual(self.client.post('/api/admin/media/bulk',json=payload).status_code,403)
         for values in [[],[names[0],names[0]],['../bad'],[1],None,names*40]:
             self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':values}).status_code,400)
-        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names}).status_code,400)
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names}).status_code,409)
         self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':[names[0],'f'*32+'.webp']}).status_code,404)
         with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media WHERE deleted_at IS NOT NULL').fetchone()['n'],0)
+
+    def test_purge_removes_files_variants_metadata_and_cannot_restore(self):
+        from pathlib import Path
+        import app as module
+        from performance import image_variant_path
+        self.login();names=self.seed_media();paths=[]
+        for name in names[:2]:
+            source=Path(base.TEMP.name)/'uploads'/name;paths.append(source)
+            for width in (640,1280):
+                cache=image_variant_path(source,width);cache.parent.mkdir(exist_ok=True);cache.write_bytes(b'cached');paths.append(cache)
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names[:2]}).status_code,200)
+        response=self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names[:2]})
+        self.assertEqual(response.status_code,200,response.json);self.assertEqual(response.json['count'],2);self.assertFalse(response.json['cleanup_pending'])
+        for path in paths:self.assertFalse(path.exists(),str(path))
+        self.assertTrue((Path(base.TEMP.name)/'uploads'/names[2]).exists())
+        with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media').fetchone()['n'],1)
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'restore','filenames':names[:2]}).status_code,404)
+        self.assertEqual(list((Path(base.TEMP.name)/'media-purge').iterdir()),[])
+
+    def test_single_purge_protects_used_trash_and_missing_files(self):
+        self.login();names=self.seed_media()
+        self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names})
+        with base.connect() as c:c.execute("INSERT INTO agent_tasks(kind,prompt,status,request,report) VALUES('chat','保留图片','done',%s,%s)",(Jsonb({'assistant':'travel'}),Jsonb({'travel_guide':{'body':'/media/'+names[0]}})))
+        self.assertEqual(self.mutate('POST','/api/admin/media/'+names[0],{'action':'purge'}).status_code,409)
+        self.assertEqual(self.mutate('POST','/api/admin/media/'+names[1],{'action':'purge'}).status_code,200)
+        from pathlib import Path
+        (Path(base.TEMP.name)/'uploads'/names[2]).unlink()
+        self.assertEqual(self.mutate('POST','/api/admin/media/'+names[2],{'action':'purge'}).status_code,200)
+
+    def test_purge_rolls_back_metadata_and_files_on_database_failure(self):
+        from pathlib import Path
+        import app as module
+        self.login();names=self.seed_media();self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names})
+        with patch('app.audit',side_effect=RuntimeError('simulated audit failure')):
+            response=self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names})
+        self.assertEqual(response.status_code,500)
+        for name in names:self.assertEqual((Path(base.TEMP.name)/'uploads'/name).read_bytes(),b'kept-file')
+        with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media').fetchone()['n'],3)
+        self.assertEqual(list((Path(base.TEMP.name)/'media-purge').iterdir()),[])

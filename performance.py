@@ -30,12 +30,16 @@ def page_html(filename):
     return re.sub(r'((?:src|href)="/static/([^"?]+\.(?:js|css)))(?=")',version,text)
 
 
-def image_variant(path,width):
+def image_variant_path(path,width):
     if width not in (640,1280): raise ValueError('Unsupported display size')
     stat=path.stat()
     key=hashlib.sha256(f'{path}:{stat.st_mtime_ns}:{stat.st_size}:{width}:webp78-v1'.encode()).hexdigest()
-    cache=DATA/'image-cache';cache.mkdir(exist_ok=True)
-    result=cache/(key+'.webp')
+    return DATA/'image-cache'/(key+'.webp')
+
+
+def image_variant(path,width):
+    result=image_variant_path(path,width)
+    cache=result.parent;cache.mkdir(exist_ok=True)
     if not result.is_file():
         with Image.open(path) as original:
             picture=ImageOps.exif_transpose(original).convert('RGB')

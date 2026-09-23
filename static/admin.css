@@ -26,6 +26,9 @@
 .media-refresh{border:0;background:none;color:#65806d;font:inherit;font-size:12px;white-space:nowrap;text-decoration:underline;text-underline-offset:4px;cursor:pointer;padding:10px 4px}
 .media-refresh:disabled{opacity:.5;cursor:default}.media-toolbar .media-refresh{margin-left:auto}
 .media-card{position:relative}.media-card.is-selected{outline:2px solid var(--green);outline-offset:1px}
-.media-select{position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:6px;background:#fffffff0;border-radius:6px;padding:10px;margin:0;font-size:11px;cursor:pointer}.media-select input:disabled{cursor:not-allowed}
+.media-select{position:absolute;top:2px;left:2px;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0;padding:0;cursor:pointer}
+.media-select .media-check{appearance:none;width:21px;height:21px;margin:0;border:1px solid #a7b3a5;border-radius:5px;background:#ffffffdf;box-shadow:0 1px 3px #213c2d12;cursor:pointer}
+.media-select .media-check:checked{border-color:var(--green);background-color:var(--green);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m5 10 3 3 7-7' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.media-select .media-check:disabled{opacity:.35;cursor:not-allowed}.media-card.is-selected{outline-width:1px}
 .media-body .actions button:disabled{cursor:not-allowed}
 @media(max-width:600px){.media-selection{gap:8px;padding:12px}.media-selection>label{flex-basis:100%}.media-selection>span{font-size:11px}}

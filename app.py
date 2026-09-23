@@ -23,7 +23,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.exceptions import HTTPException
 from database import connect
 from handbooks import HANDBOOK_CSP
-from performance import fingerprint, image_variant, lazy_image, page_html
+from performance import fingerprint, image_variant, image_variant_path, lazy_image, page_html
 from html_imports import ImportProblem, MAX_UPLOAD, STATIC_HANDBOOK_CSP, parse_upload
 
 BASE = Path(__file__).parent
@@ -861,14 +861,49 @@ def admin_media():
     defaults=[{'url':'/static/assets/'+p.name,'name':p.stem} for p in sorted((BASE/'static/assets').iterdir()) if re.fullmatch(r'[a-z]+\.(jpg|svg)',p.name)]
     return jsonify(media=rows,defaults=defaults)
 
+def purge_media_rows(rows,action):
+    if any(row['deleted_at'] is None for row in rows):
+        abort(409,description='请先把图片移入回收站，再彻底删除')
+    references=media_reference_map(rows)
+    if any(references['/media/'+row['filename']] for row in rows):
+        abort(409,description='部分图片仍在使用，本次未删除任何图片。请先查看使用位置并移除图片。')
+    files=[]
+    for row in rows:
+        path=DATA/'uploads'/row['filename']
+        if path.is_symlink(): abort(409,description='图片文件状态异常，请联系管理员')
+        if path.is_file():
+            files.append(path)
+            files.extend(image_variant_path(path,width) for width in (640,1280) if image_variant_path(path,width).is_file())
+    staging=DATA/'media-purge'/secrets.token_hex(16);staging.mkdir(parents=True,mode=0o700)
+    moves=[(path,staging/str(i)) for i,path in enumerate(files)]
+    (staging/'manifest.json').write_text(json.dumps({'filenames':[r['filename'] for r in rows],'files':[{ 'source':str(a.relative_to(DATA)),'staged':b.name} for a,b in moves]}))
+    try:
+        for source,target in moves: source.replace(target)
+        names=[row['filename'] for row in rows]
+        db().execute('DELETE FROM media WHERE filename=ANY(%s)',(names,))
+        audit(action,details={'name':f'{len(names)} 张图片','filenames':names})
+        db().commit()
+    except Exception:
+        db().rollback()
+        for source,target in reversed(moves):
+            if target.exists(): target.replace(source)
+        shutil.rmtree(staging)
+        raise
+    pending=False
+    try: shutil.rmtree(staging)
+    except OSError:
+        pending=True;app.logger.exception('Media metadata removed; file cleanup pending in %s',staging)
+    return {'ok':True,'count':len(rows),'cleanup_pending':pending}
+
 @app.post('/api/admin/media/bulk')
 def bulk_media():
     data=payload();action=data.get('action');filenames=data.get('filenames')
-    if action not in ('trash','restore'): abort(400,description='不支持的批量素材操作')
+    if action not in ('trash','restore','purge'): abort(400,description='不支持的批量素材操作')
     if not isinstance(filenames,list) or not 1<=len(filenames)<=100 or any(not isinstance(name,str) or not re.fullmatch(r'[a-f0-9]{32}\.webp',name) for name in filenames) or len(set(filenames))!=len(filenames):
         abort(400,description='请选择 1～100 张不同的图片')
     rows=db().execute('SELECT filename,name,deleted_at FROM media WHERE filename=ANY(%s) ORDER BY filename FOR UPDATE',(filenames,)).fetchall()
     if len(rows)!=len(filenames): abort(404,description='部分图片已不存在，请刷新列表后重试')
+    if action=='purge': return jsonify(purge_media_rows(rows,'media.bulk_purge'))
     targets=[r for r in rows if (r['deleted_at'] is None)==(action=='trash')]
     if action=='trash':
         references=media_reference_map(targets)
@@ -886,6 +921,7 @@ def update_media(filename):
     row=db().execute('SELECT * FROM media WHERE filename=%s FOR UPDATE',(filename,)).fetchone()
     if not row: abort(404)
     data=payload();action=data.get('action')
+    if action=='purge': return jsonify(purge_media_rows([row],'media.purge'))
     if action=='rename':
         name=data.get('name','')
         if not isinstance(name,str) or not 1<=len(name.strip())<=150: abort(400,description='素材名称需要 1～150 字')
