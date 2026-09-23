@@ -841,7 +841,19 @@ def media_refs(filename):
 @app.get('/api/admin/media')
 def admin_media():
     rows=db().execute('SELECT * FROM media ORDER BY created_at DESC').fetchall()
-    for row in rows: row.update(url='/media/'+row['filename'],references=media_refs(row['filename']))
+    # Scan each content body once, rather than once for every image.
+    references={'/media/'+row['filename']:[] for row in rows}
+    queries=[
+        r"SELECT g.id,g.title,g.deleted_at,'guide' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT g.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(g.body,'/media/([a-f0-9]{32}\.webp)','g') m) links) AS urls FROM guides g ORDER BY g.id",
+        r"SELECT r.id,r.title,r.deleted_at,'record' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT r.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(r.body,'/media/([a-f0-9]{32}\.webp)','g') m UNION ALL SELECT photo->>'url' FROM jsonb_array_elements(r.photos) photo) links) AS urls FROM travel_records r ORDER BY r.id",
+        r"SELECT t.id,'旅游助手 · '||coalesce(t.report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.report->'travel_guide'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' ORDER BY t.id",
+    ]
+    if rows:
+        for query in queries:
+            for reference in db().execute(query).fetchall():
+                for url in reference.pop('urls'):
+                    if url in references: references[url].append(reference)
+    for row in rows: row.update(url='/media/'+row['filename'],references=references['/media/'+row['filename']])
     defaults=[{'url':'/static/assets/'+p.name,'name':p.stem} for p in sorted((BASE/'static/assets').iterdir()) if re.fullmatch(r'[a-z]+\.(jpg|svg)',p.name)]
     return jsonify(media=rows,defaults=defaults)
 
