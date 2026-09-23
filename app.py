@@ -838,9 +838,7 @@ def media_refs(filename):
     tasks=db().execute("SELECT id,'旅游助手 · ' || coalesce(report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind FROM agent_tasks WHERE request->>'assistant'='travel' AND position(%s in coalesce(report->'travel_guide'->>'body',''))>0 ORDER BY id",(url,)).fetchall()
     return guides+records+tasks
 
-@app.get('/api/admin/media')
-def admin_media():
-    rows=db().execute('SELECT * FROM media ORDER BY created_at DESC').fetchall()
+def media_reference_map(rows):
     # Scan each content body once, rather than once for every image.
     references={'/media/'+row['filename']:[] for row in rows}
     queries=[
@@ -853,9 +851,34 @@ def admin_media():
             for reference in db().execute(query).fetchall():
                 for url in reference.pop('urls'):
                     if url in references: references[url].append(reference)
+    return references
+
+@app.get('/api/admin/media')
+def admin_media():
+    rows=db().execute('SELECT * FROM media ORDER BY created_at DESC').fetchall()
+    references=media_reference_map(rows)
     for row in rows: row.update(url='/media/'+row['filename'],references=references['/media/'+row['filename']])
     defaults=[{'url':'/static/assets/'+p.name,'name':p.stem} for p in sorted((BASE/'static/assets').iterdir()) if re.fullmatch(r'[a-z]+\.(jpg|svg)',p.name)]
     return jsonify(media=rows,defaults=defaults)
+
+@app.post('/api/admin/media/bulk')
+def bulk_media():
+    data=payload();action=data.get('action');filenames=data.get('filenames')
+    if action not in ('trash','restore'): abort(400,description='不支持的批量素材操作')
+    if not isinstance(filenames,list) or not 1<=len(filenames)<=100 or any(not isinstance(name,str) or not re.fullmatch(r'[a-f0-9]{32}\.webp',name) for name in filenames) or len(set(filenames))!=len(filenames):
+        abort(400,description='请选择 1～100 张不同的图片')
+    rows=db().execute('SELECT filename,name,deleted_at FROM media WHERE filename=ANY(%s) ORDER BY filename FOR UPDATE',(filenames,)).fetchall()
+    if len(rows)!=len(filenames): abort(404,description='部分图片已不存在，请刷新列表后重试')
+    targets=[r for r in rows if (r['deleted_at'] is None)==(action=='trash')]
+    if action=='trash':
+        references=media_reference_map(targets)
+        blocked=[r['name'] for r in targets if references['/media/'+r['filename']]]
+        if blocked: abort(409,description=f'有 {len(blocked)} 张图片正在使用，本次未删除任何图片。请刷新列表并查看使用位置。')
+    changed=[r['filename'] for r in targets]
+    if changed:
+        db().execute('UPDATE media SET deleted_at='+('now()' if action=='trash' else 'NULL')+' WHERE filename=ANY(%s)',(changed,))
+        audit('media.bulk_'+action,details={'name':f'{len(changed)} 张图片','filenames':changed})
+    db().commit();return jsonify(ok=True,count=len(changed))
 
 @app.post('/api/admin/media/<filename>')
 def update_media(filename):
@@ -868,7 +891,7 @@ def update_media(filename):
         if not isinstance(name,str) or not 1<=len(name.strip())<=150: abort(400,description='素材名称需要 1～150 字')
         db().execute('UPDATE media SET name=%s WHERE filename=%s',(name.strip(),filename))
     elif action=='trash':
-        if media_refs(filename): abort(409,description='图片仍被攻略、旅行足迹或旅游助手引用（含回收站），请先移除引用')
+        if media_refs(filename): abort(409,description='图片正在被攻略、旅行足迹或旅游助手使用（含回收站），请先从对应内容中移除图片')
         db().execute('UPDATE media SET deleted_at=now() WHERE filename=%s',(filename,))
     elif action=='restore': db().execute('UPDATE media SET deleted_at=NULL WHERE filename=%s',(filename,))
     else: abort(400,description='不支持的素材操作')

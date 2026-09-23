@@ -57,7 +57,7 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await p.evaluate(()=>{clockOffset+=11000;location.hash='account';});await p.waitForSelector('#account-form');
   const coldCalls=mediaCalls;if(width<900)await p.locator('#admin-menu-toggle').click();await p.hover('#navigation [href="#media"]');await p.waitForFunction(()=>adminDataCache.get('/admin/media')?.expires>Date.now());assert.equal(mediaCalls,coldCalls+1,'menu intent prefetches only the requested page');
   await p.locator('#navigation [href="#media"]').click();await p.waitForSelector('.media-card');assert.equal(mediaCalls,coldCalls+1,'navigation consumes the prefetched result');
-  await p.locator('#admin-page-refresh').click();await p.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));assert.equal(mediaCalls,coldCalls+2,'manual refresh bypasses cached data');
+  await p.locator('.media-toolbar [data-action=refresh-page]').click();await p.waitForFunction(()=>!document.querySelector('#main').hasAttribute('aria-busy'));assert.equal(mediaCalls,coldCalls+2,'manual refresh bypasses cached data');
   await p.evaluate(async()=>{await api('/guides/1');await api('/guides/1');});assert.equal(detailCalls,2,'editor bodies are always read fresh');
   await p.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'hidden',{configurable:true,value:false});});assert.equal(await p.evaluate(()=>adminDataCache.size),0,'hiding the tab clears memory data');
   await p.evaluate(()=>loadingObserver.disconnect());

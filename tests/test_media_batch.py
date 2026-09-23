@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 class MediaBatchTests(unittest.TestCase):
     setUp=base.AppTests.setUp
     login=base.AppTests.login
+    mutate=base.AppTests.mutate
 
     def test_all_reference_kinds_duplicates_and_query_bound(self):
         self.login()
@@ -38,3 +39,43 @@ class MediaBatchTests(unittest.TestCase):
         self.assertEqual(rows[filenames[4]]['references'],[])
         self.assertEqual(self.visitor.get('/api/admin/media').status_code,401)
         self.assertEqual(response.headers['Cache-Control'],'no-store')
+
+    def seed_media(self):
+        from pathlib import Path
+        names=[str(i).zfill(32)+'.webp' for i in range(1,4)]
+        with base.connect() as c:
+            for name in names:
+                c.execute('INSERT INTO media(filename,name,bytes,width,height) VALUES(%s,%s,10,1,1)',(name,'测试图片'))
+                (Path(base.TEMP.name)/'uploads'/name).write_bytes(b'kept-file')
+        return names
+
+    def test_bulk_delete_restore_keeps_files_and_audits(self):
+        from pathlib import Path
+        self.login();names=self.seed_media()
+        response=self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names[:2]})
+        self.assertEqual(response.status_code,200,response.json);self.assertEqual(response.json['count'],2)
+        with base.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) n FROM media WHERE deleted_at IS NOT NULL').fetchone()['n'],2)
+            self.assertEqual(c.execute("SELECT count(*) n FROM audit_log WHERE action='media.bulk_trash'").fetchone()['n'],1)
+        for name in names:self.assertEqual((Path(base.TEMP.name)/'uploads'/name).read_bytes(),b'kept-file')
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names[:2]}).json['count'],0)
+        restored=self.mutate('POST','/api/admin/media/bulk',{'action':'restore','filenames':names[:2]})
+        self.assertEqual(restored.json['count'],2)
+        with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media WHERE deleted_at IS NOT NULL').fetchone()['n'],0)
+
+    def test_bulk_used_image_prevents_partial_deletion(self):
+        self.login();names=self.seed_media()
+        with base.connect() as c:c.execute("INSERT INTO guides(title,destination,cover,status,deleted_at) VALUES('回收站仍在使用','测试',%s,'private',now())",('/media/'+names[1],))
+        response=self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':names})
+        self.assertEqual(response.status_code,409);self.assertIn('未删除任何图片',response.json['error'])
+        with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media WHERE deleted_at IS NOT NULL').fetchone()['n'],0)
+
+    def test_bulk_auth_csrf_validation_and_missing_images(self):
+        names=self.seed_media();payload={'action':'trash','filenames':names}
+        self.assertEqual(self.visitor.post('/api/admin/media/bulk',json=payload).status_code,401)
+        self.login();self.assertEqual(self.client.post('/api/admin/media/bulk',json=payload).status_code,403)
+        for values in [[],[names[0],names[0]],['../bad'],[1],None,names*40]:
+            self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':values}).status_code,400)
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'purge','filenames':names}).status_code,400)
+        self.assertEqual(self.mutate('POST','/api/admin/media/bulk',{'action':'trash','filenames':[names[0],'f'*32+'.webp']}).status_code,404)
+        with base.connect() as c:self.assertEqual(c.execute('SELECT count(*) n FROM media WHERE deleted_at IS NOT NULL').fetchone()['n'],0)
