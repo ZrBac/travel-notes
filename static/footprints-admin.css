@@ -3,3 +3,7 @@
 @media(max-width:850px){.record-editor-layout{grid-template-columns:1fr}.record-editor-layout>aside{display:grid;grid-template-columns:1fr 1fr;gap:20px}.record-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.record-save-panel{position:static}.record-filters{flex-wrap:wrap}.record-filters input{flex-basis:100%}}
 @media(max-width:600px){.record-editor-layout>aside{display:block}.record-photo-grid{gap:12px}.record-photo-editor>img{height:140px}.record-photo-editor{padding:8px}.record-photo-controls{gap:4px}.record-photo-controls button{font-size:10px}.record-media-picker{grid-template-columns:repeat(2,minmax(0,1fr))}.record-media-picker img{height:95px}.record-filters select{width:calc(100% - 85px)}.record-editor-layout{gap:0}.record-upload-label{font-size:11px}#record-editor-form .field-row{grid-template-columns:1fr}}
 @media(max-width:370px){.record-photo-grid{grid-template-columns:1fr}.record-photo-editor>img{height:200px}}
+
+/* Keep save feedback in its own row, clear of the full-width actions. */
+.record-save-panel>.button{display:flex;justify-content:center;min-height:44px}
+#record-save-note{margin:12px 0 16px}
