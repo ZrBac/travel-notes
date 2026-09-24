@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+case "${1:-status}" in
+  status) exec runuser -u travelxhs -- /usr/bin/python3 /opt/travel-xhs/guard.py status ;;
+  check) systemctl start travel-xhs-check.service
+         exec runuser -u travelxhs -- /usr/bin/python3 /opt/travel-xhs/guard.py status ;;
+  *) echo 'Usage: travel-xhs-check [status|check]' >&2; exit 2 ;;
+esac

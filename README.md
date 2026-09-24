@@ -196,3 +196,6 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 公开静态资源与图片尺寸：Nginx 的 `ops-config/nginx-site.conf` 直接读取明确允许的 `/static/` 脚本、样式、内置图片和字体；HTML 页面、上传图片及附件仍走应用。带 16 位内容版本参数的资源及文件名带版本的 optimized 图片长期缓存，未带版本的资源重新验证；发布必须更新页面引用的内容指纹。静态资源保留 CSP、nosniff、HSTS 等响应头；不存在文件直接 404，不回退到应用。部署需把此文件同步至 `/etc/nginx/default.d/ip-test.conf`，先 `nginx -t` 再平滑重载。
 
 共享图片加载器按实际显示尺寸与 devicePixelRatio 选择 320/480/640/1280，保留按需加载、并发上限和切页取消。上传预生成复用一次解码，失败时移除本次文件及派生图；素材彻底删除也清理四档。历史素材、批量 HTML 导入素材或被定期清理的缓存保留按需生成兜底，原始照片不变，公开/私密权限每次重新验证。
+
+
+小红书连接目前仅有独立的登录可用性验证工具，尚未接入旅行助手。固定浏览器目录、并发锁、持久冷却及脱敏请求统计说明见 [integrations/xiaohongshu/README.md](integrations/xiaohongshu/README.md)。平台限制出现时停止；不自动重试，也不把登录状态放入仓库。

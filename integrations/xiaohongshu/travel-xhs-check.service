@@ -1,0 +1,28 @@
+[Unit]
+Description=One-shot guarded Xiaohongshu login check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=travelxhs
+Group=travelxhs
+WorkingDirectory=/opt/travel-xhs
+ExecStart=/usr/bin/python3 /opt/travel-xhs/guard.py check
+StateDirectory=travel-xhs
+StateDirectoryMode=0700
+Environment=XHS_STATE_DIR=/var/lib/travel-xhs
+UMask=0077
+TimeoutStartSec=60
+TimeoutStopSec=5
+KillMode=control-group
+MemoryMax=768M
+CPUQuota=100%
+TasksMax=192
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/travel-xhs
+RestrictSUIDSGID=true
+# Deliberately no Restart, timer or Install section: each check is manual.

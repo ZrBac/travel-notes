@@ -1,0 +1,8 @@
+browser/
+profile/
+state/
+control.json
+last-run.json
+last-network.json
+*.log
+__pycache__/
