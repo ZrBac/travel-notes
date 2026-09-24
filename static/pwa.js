@@ -98,7 +98,7 @@ const TravelPWA=(()=>{
    if(current.updated_at!==guide.updated_at)throw Error('攻略刚刚有更新，请重新保存最新版本。');
    await commit({id:Number(id),guide,images,bytes,savedAt:new Date().toISOString(),imageCount:Object.keys(images).length,missing});
    navigator.storage?.persist?.().catch(()=>{});
-   toast(missing?'攻略文字已保存，部分图片未下载，联网后可重新更新。':'攻略和配图已保存，可在「离线」中打开。');
+   toast(missing?'攻略文字已保存，部分图片未下载，联网后可重新更新。':'攻略和配图已保存，可在「已保存攻略」中打开。');
    if(location.hash==='#offline')await route();
    else if(location.hash==='#guide/'+id)await attachGuide(guide);
   }catch(error){
@@ -135,10 +135,10 @@ const TravelPWA=(()=>{
  }
  async function list(generation){
   updateShell('offline');
-  if(!supported){document.querySelector('#app').innerHTML=heading('离线攻略',preview?'管理员预览不提供离线保存，请返回访客网站。':'当前浏览器暂不支持离线保存，请用 Safari 或其他支持的浏览器打开网站。')+'<a class="button secondary" href="/">返回访客网站</a>';return;}
+  if(!supported){document.querySelector('#app').innerHTML=heading('已保存攻略',preview?'管理员预览不提供离线保存，请返回访客网站。':'当前浏览器暂不支持离线保存，请用 Safari 或其他支持的浏览器打开网站。')+'<a class="button secondary" href="/">返回访客网站</a>';return;}
   const entries=(await get('catalog')).sort((a,b)=>b.savedAt.localeCompare(a.savedAt));if(generation!==state.load)return;
   document.querySelector('#app').innerHTML=heading('把行程，随身带上。','提前保存公开攻略，没网时也能查路线、看配图。')+
-   '<section class="pwa-library-intro"><div><strong>'+entries.length+' 篇已保存 · '+formatSize(entries.reduce((n,e)=>n+e.bytes,0))+'</strong><p>仅保存在这台设备。离线时显示保存版本；联网后核对公开状态。外部链接和关联足迹需要联网。</p></div><button class="button secondary" type="button" data-pwa="install">'+(standalone()?'已添加到主屏幕':'添加到主屏幕')+'</button></section>'+
+   '<section class="pwa-library-intro"><div><strong>'+entries.length+' 篇已保存 · '+formatSize(entries.reduce((n,e)=>n+e.bytes,0))+'</strong><p>仅保存在这台设备。离线时显示保存版本；联网后核对公开状态。外部链接和关联足迹需要联网。</p></div></section>'+
    (entries.length?'<section class="pwa-library" aria-label="已保存攻略">'+entries.map(e=>'<article class="pwa-saved-card"><div><span class="pwa-place">'+esc(e.destination)+'</span><h2><a href="#offline/'+e.id+'">'+esc(e.title)+'</a></h2><p>'+esc(new Date(e.savedAt).toLocaleString('zh-CN'))+' 保存 · '+formatSize(e.bytes)+' · '+e.imageCount+' 张配图'+(e.missing?' · 部分图片未保存':'')+'</p></div><div class="pwa-saved-actions"><a class="button primary" href="#offline/'+e.id+'">打开攻略</a><button class="button secondary" data-pwa="save" data-id="'+e.id+'">更新</button><button class="button ghost" data-pwa="remove" data-id="'+e.id+'">移除</button></div></article>').join('')+'</section>':empty('行囊还是空的','联网打开一篇攻略，点击「保存离线攻略」，下次出发就能带着走。','<a class="button primary" href="#guides">挑选一篇攻略</a>'))+
    '<p class="pwa-storage-note">最多保存 20 篇、共 100 MB。浏览器清理数据可能移除本机副本，出发前请在断网状态下检查一次。</p>';
  }

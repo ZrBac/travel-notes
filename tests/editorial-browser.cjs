@@ -42,7 +42,7 @@ const record={id:1,title:'海边散步的一天',destination:'泉州',start_date
    await page.locator('nav a[href="#footprints"]:visible').click();await page.locator('#memory-filter').waitFor();await fits();
    await page.locator('.memory-card a').first().click();await page.locator('.memory-header').waitFor();await fits();
    await page.locator('[data-fp="photo"]').click();assert.equal(await page.locator('#memory-viewer').evaluate(d=>d.open),true);await page.keyboard.press('Escape');
-   for(const hash of ['destinations','tags']){await page.locator(`#navigation a[href="#${hash}"]`).click();await page.locator(hash==='tags'?'.tag-tile':'.destination-card').first().waitFor();await fits();}
+   for(const hash of ['destinations','tags']){await page.locator("#site-more summary").click();assert.ok(await page.locator(".site-more-panel").evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}));await page.locator(`#site-more a[href="#${hash}"]`).click();assert.equal(await page.locator("#site-more").evaluate(n=>n.open),false);await page.locator(hash==='tags'?'.tag-tile':'.destination-card').first().waitFor();await fits();}
    empty=true;await page.goto('http://journal.test/');await page.locator('.journal-lead h2').waitFor();assert.equal(await page.locator('.journal-photo').count(),0);await fits();
    assert.deepEqual(errors,[]);await context.close();console.log(`PASS ${width}px: home, search, sort, details, album, navigation, empty state; no overflow or JS errors`);
   }

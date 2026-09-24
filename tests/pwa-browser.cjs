@@ -27,10 +27,14 @@ function worker(){const h=html(),assets=[...h.matchAll(/(?:src|href)="(\/static\
   const ctx=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2}),p=await ctx.newPage(),errors=[];
   p.on('pageerror',e=>errors.push(e.message));await ctx.addCookies([{name:'admin_fixture',value:'must-not-leak',url:base}]);
   await p.goto(base);await p.waitForSelector('.journal-lead');await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
-  assert.equal(await p.locator('#mobile-navigation a').count(),4);
+  assert.equal(await p.locator('#mobile-navigation a').count(),3);
+  assert.equal(await p.locator('#navigation a').count(),3);
+  assert.equal(await p.locator('#navigation a[href="#offline"],#mobile-navigation a[href="#offline"]').count(),0);
   assert.equal(await p.locator('.footer [data-pwa=install]').count(),0);
-  await p.evaluate(()=>location.hash='offline');await p.waitForSelector('.pwa-library-intro');
-  await p.locator('[data-pwa=install]').click();await p.waitForSelector('#pwa-install[open]');await p.locator('[data-pwa=close-install]').last().click();
+  await p.locator('#site-more summary').click();await p.keyboard.press('Escape');assert.equal(await p.locator('#site-more').evaluate(n=>n.open),false);
+  await p.locator('#site-more summary').click();await p.locator('.brand').click();assert.equal(await p.locator('#site-more').evaluate(n=>n.open),false);
+  await p.locator('#site-more summary').click();await p.locator('#site-more a[href="#offline"]').click();await p.waitForSelector('.pwa-library-intro');assert.equal(await p.locator('#site-more').evaluate(n=>n.open),false);
+  await p.locator('#site-more summary').click();await p.locator('#site-more [data-pwa=install]').click();await p.waitForSelector('#pwa-install[open]');await p.locator('[data-pwa=close-install]').last().click();
   await p.evaluate(()=>location.hash='guide/1');await p.waitForSelector('[data-pwa=save]');await p.locator('[data-pwa=save]').click();
   await p.waitForFunction(async()=>await TravelPWA.has(1));await p.waitForFunction(()=>document.querySelector('#pwa-progress').hidden);
   assert.ok(requests.filter(r=>r.path.startsWith('/api/')||r.path.startsWith('/media/')).every(r=>!r.cookie),'public downloads must not send admin cookies');
