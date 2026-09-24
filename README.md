@@ -217,3 +217,10 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 后台正文／HTML 导入预览属于只读渲染，不再清空其他列表缓存；真正的写入仍在请求前后清除，并通知其他管理标签页。旅游助手每次切入仍读取最新任务列表，仅对已完成且更新时间相同的结果复用现有 30 秒内存缓存；运行中任务和编辑正文不缓存。缓存遵循原有容量、页面隐藏、退出和写入失效规则，不持久保存任务内容。足迹编辑相册及助手发布预览图片统一使用可取消、并发最多 2 张的图片队列。
 
 回归：`node tests/footprints-loading-browser.cjs`、`node tests/admin-loading-browser.cjs`、`node tests/admin-cache-images-browser.cjs`；后端首屏分页及私密元数据隔离由 `tests/test_records.py` 验证。
+
+
+### 手机后台布局
+
+`admin-mobile.css` / `admin-mobile.js` 对 900px 及以下的后台使用顶部常驻菜单，攻略、足迹、操作记录和账号表格按原表头显示为卡片；正文表格不转换。保留同一组选择框、行内分类／状态和操作按钮，不复制列表或额外请求接口。输入文字至少 16px，主要触控按钮至少 44px，菜单、相册、素材操作和弹窗适配窄屏及安全区域。
+
+攻略／足迹编辑页的底部保存栏显示可见范围，通过点击原表单保存按钮复用校验、并发禁用、错误反馈和保存逻辑；不建立新的保存接口，不自动保存。切换页面、退出及专注编辑时收起，软键盘明显压缩可视区域时隐藏。桌面继续使用原布局。`node tests/admin-mobile-browser.cjs` 使用合成数据验证 320/390/768/1440px、菜单与卡片、校验失败不提交、重复点击保护、保存冲突保留输入以及原正文／私密状态不被改写。

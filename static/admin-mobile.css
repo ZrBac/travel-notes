@@ -1,0 +1,53 @@
+/* Mobile administration: the same controls, arranged for touch and narrow screens. */
+.admin-savebar{display:none}
+@media(max-width:900px){
+ .sidebar{position:sticky;inset:auto;top:0;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;padding:12px 18px;padding-top:max(12px,env(safe-area-inset-top));z-index:25;box-shadow:0 2px 10px #183b2910;max-height:100dvh;overflow-y:auto}
+ .sidebar .brand{font-size:24px;padding:0}.sidebar .brand-mark{width:34px;height:36px;font-size:18px}
+ .sidebar #navigation{max-height:calc(100dvh - 165px);overscroll-behavior:contain}
+ .sidebar .nav-item,.admin-menu-toggle,.sidebar-foot a,.sidebar-foot button{min-height:44px}
+ .sidebar-foot a,.sidebar-foot button{display:flex;align-items:center;font-size:12px}
+ .workspace{margin-left:0}.topbar{height:46px;padding:0 18px}.admin-account a{display:flex;align-items:center;min-height:44px;max-width:115px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+ main{padding:24px 18px;min-height:calc(100dvh - 180px)}
+ .page-heading{display:block;margin-bottom:20px}.page-heading h1{font-size:25px;line-height:1.5;margin:7px 0 8px}.page-heading p{font-size:13px}.page-heading .eyebrow{display:none}
+ .page-heading>.button,.page-heading>.actions{margin-top:16px;max-width:none;justify-content:flex-start}
+ .button,.button.small,.button.ghost,.tab{min-height:44px;font-size:13px;padding:10px 13px}
+ #main input:not([type=checkbox]):not([type=file]),#main select,#main textarea,#dialog input:not([type=checkbox]):not([type=file]),#dialog select,#dialog textarea,#login-form input{font-size:16px!important;min-height:44px;max-width:100%}
+ #main label,#dialog label{font-size:13px}.field-row{grid-template-columns:1fr}.help{font-size:12px;line-height:1.8}
+ .filter-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.filter-form input{grid-column:1/-1;min-width:0!important}.filter-form select{width:100%;max-width:none}.filter-form .button{width:100%}
+ .import-file input[type=file]{font-size:16px;max-width:100%;min-height:44px}
+ .panel{padding:16px}.panel-top{flex-wrap:wrap}.panel-top h2{line-height:1.6}.pagination{flex-wrap:wrap;gap:10px}.pagination>span:first-child{flex-basis:100%}
+ .table-wrap:has(>.admin-card-table){overflow:visible}
+ .admin-card-table,.admin-card-table tbody{display:block;width:100%}
+ .admin-card-table thead{display:none}
+ .admin-card-table.has-selection thead,.admin-card-table.has-selection thead tr{display:block}
+ .admin-card-table.has-selection thead th{display:none}
+ .admin-card-table.has-selection thead th.check{display:flex;align-items:center;gap:10px;width:auto;background:none;border:0;padding:0 0 12px;min-height:44px}
+ .admin-card-table.has-selection thead th.check:after{content:'选择本页全部';font-size:13px;color:var(--muted)}
+ .admin-card-table tbody tr{display:block;position:relative;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px;background:white}
+ .admin-card-table td{display:grid;grid-template-columns:65px minmax(0,1fr);gap:10px;align-items:center;border:0;padding:8px 0;min-width:0;white-space:normal;font-size:13px;overflow-wrap:anywhere}
+ .admin-card-table td:before{content:attr(data-label);font-size:12px;color:var(--muted)}
+ .admin-card-table td.card-title{display:block;padding:0 0 12px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+ .admin-card-table td.card-title:before,.admin-card-table td.card-actions:before,.admin-card-table td.check:before{display:none}
+ .admin-card-table.has-selection td.card-title{padding-right:30px}
+ .admin-card-table td.check{position:absolute;top:7px;right:5px;display:grid;place-items:center;width:44px;height:44px;padding:0}
+ .admin-card-table input[type=checkbox]{width:22px;height:22px;margin:0;cursor:pointer}
+ .admin-card-table .title-cell{min-width:0;max-width:none;gap:10px}.admin-card-table .title-cell img{display:block;width:52px;height:52px;flex-shrink:0;object-fit:cover}
+ .admin-card-table .title-cell a{font-size:14px;line-height:1.7}.admin-card-table .title-cell small{font-size:11px}.admin-card-table .title-cell>div{min-width:0}
+ .admin-card-table td.card-actions{display:block;border-top:1px solid var(--line);margin-top:8px;padding:12px 0 0}.admin-card-table .table-actions{flex-wrap:wrap;gap:8px;white-space:normal}
+ .table-actions a,.table-actions button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#f8faf6}
+ .guide-inline-feedback{grid-column:2}.admin-card-table select{width:100%;min-width:0}
+ .media-toolbar input{max-width:none}.media-body .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.media-body .button{min-height:44px;padding:8px 3px;font-size:12px}.media-body .actions .button:only-child{grid-column:1/-1}
+ .taxonomy-row button,.record-photo-controls button,.task-text-action,.planner-text-button{min-height:44px;padding:8px;font-size:12px}
+ .task-check{min-width:44px}.task-check input,.task-selection input[type=checkbox]{width:22px;height:22px}
+ .record-photo-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.record-photo-controls button{border:1px solid var(--line);border-radius:5px;background:white}
+ .record-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.record-editor-layout{grid-template-columns:1fr}.record-editor-layout>aside{display:block}.record-save-panel{position:static}
+ .travel-editor-bar button{min-height:44px}.travel-editor .jodit-wysiwyg{font-size:16px!important}.travel-editor>textarea{font-size:16px!important}
+ dialog{width:calc(100% - 20px);max-height:calc(100dvh - 24px);padding:54px 18px 22px;border-radius:14px;overscroll-behavior:contain}
+ .dialog-close{width:44px;height:44px;top:6px;right:6px;display:grid;place-items:center;background:var(--bg);border-radius:50%;z-index:2}
+ .has-mobile-save #main{padding-bottom:100px}.has-mobile-save footer{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+ .admin-savebar:not([hidden]){position:fixed;bottom:0;left:0;right:0;z-index:24;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px calc(12px + env(safe-area-inset-bottom));background:#fffffff5;border-top:1px solid var(--line);box-shadow:0 -4px 18px #243f3508}
+ .admin-save-status{font-size:12px;color:var(--muted);line-height:1.5}.admin-savebar .button{min-width:116px}
+ .has-mobile-save #toast{bottom:calc(92px + env(safe-area-inset-bottom))}
+ .admin-keyboard-open .admin-savebar,.editor-focused .admin-savebar{display:none}
+}
+@media(max-width:370px){.record-photo-grid,.media-grid{grid-template-columns:1fr}.admin-card-table .title-cell img{display:none}.admin-savebar{padding-left:12px;padding-right:12px}}

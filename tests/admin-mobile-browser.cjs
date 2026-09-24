@@ -1,0 +1,32 @@
+// Synthetic local fixtures. Verifies touch layout and delegates saves to existing handlers.
+const {chromium}=require('/opt/travel-notes/test-tools/node_modules/playwright');const fs=require('fs'),path=require('path'),assert=require('assert/strict');const root=path.resolve(__dirname,'..');
+(async()=>{const b=await chromium.launch({args:['--no-sandbox']});try{for(const width of [320,390,768,1440]){
+ const ctx=await b.newContext({viewport:{width,height:844}}),p=await ctx.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
+ const guide={id:1,title:'泉州四天三晚的人文与美食攻略',destination:'泉州',country:'中国',summary:'古城街道',days:4,status:'private',tags:[],cover:'/static/assets/lake.jpg',body:'<div class="table-wrap"><table><thead><tr><th>路线</th></tr></thead><tbody><tr><td>古城散步</td></tr></tbody></table></div>',html:'<div class="table-wrap"><table><thead><tr><th>路线</th></tr></thead><tbody><tr><td>古城散步</td></tr></tbody></table></div>',revision:1,updated_at:'2026-09-24'};
+ const record={id:1,title:'古城漫步',destination:'泉州',start_date:'2026-09-24',photos:[],cover:guide.cover,status:'private',body:'<p>手记保留</p>',html:'<p>手记保留</p>',revision:1};let failSave=true,writes=[];
+ await ctx.route('**/*',async r=>{const u=new URL(r.request().url());assert.equal(u.origin,'http://mobile.test');let data,code=200;
+ if(u.pathname.startsWith('/api/')){
+  if(r.request().method()==='PUT'){assert.ok(['/api/guides/1','/api/records/1'].includes(u.pathname));assert.equal(r.request().headers()['x-csrf-token'],'fixture');const body=r.request().postDataJSON();writes.push({path:u.pathname,body});await new Promise(resolve=>setTimeout(resolve,250));if(failSave){data={error:'模拟保存冲突，请重试'};code=409;}else{Object.assign(u.pathname.includes('/records/')?record:guide,body);data={id:1};}}
+  else if(u.pathname==='/api/session')data={csrf:'fixture',user:{username:'test',display_name:'管理员'}};
+  else if(u.pathname==='/api/admin/taxonomy')data={categories:[{id:1,name:'国内旅行'}],tags:[]};
+  else if(u.pathname==='/api/admin/guides')data={guides:[guide],total:1,page:1,pages:1};
+  else if(u.pathname==='/api/guides/1')data={guide};
+  else if(u.pathname==='/api/guides')data={guides:[guide]};
+  else if(u.pathname==='/api/records/1')data={record};
+  else if(u.pathname==='/api/records')data={records:[record],total:1,page:1,pages:1};
+  else throw Error('Unexpected API '+u.pathname);return r.fulfill({status:code,json:data});
+ }
+ const f=path.join(root,u.pathname==='/admin'?'static/admin.html':u.pathname);return r.fulfill({body:fs.readFileSync(f),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.jpg':'image/jpeg','.webp':'image/webp'})[path.extname(f)]||'application/octet-stream'});
+ });
+ await p.goto('http://mobile.test/admin#guides');await p.waitForSelector('table.admin-card-table');
+ const narrow=width<=900;assert.equal(await p.locator('.sidebar').evaluate(n=>getComputedStyle(n).position),narrow?'sticky':'fixed');
+ if(narrow){assert.equal(await p.locator('.workspace').evaluate(n=>getComputedStyle(n).marginLeft),'0px');assert.ok(await p.locator('.table-wrap').evaluate(n=>n.scrollWidth<=n.clientWidth+1));assert.ok(await p.locator('[data-guide-field=status]').evaluate(n=>parseFloat(getComputedStyle(n).fontSize)>=16));await p.locator('#admin-menu-toggle').click();assert.equal(await p.locator('#navigation').isVisible(),true);await p.locator('.page-heading h1').click();assert.equal(await p.locator('#navigation').isVisible(),false);}
+ await p.locator('#select-all').check();assert.equal(await p.locator('.guide-check').isChecked(),true);
+ const go=async hash=>{await p.evaluate(async h=>{history.replaceState(null,'','#'+h);await route();},hash);await p.evaluate(()=>new Promise(requestAnimationFrame));};
+ await go('edit/1');await p.waitForFunction(()=>!TravelEditor.busy);assert.equal(await p.locator('.travel-editor .admin-card-table').count(),0,'article tables must remain untouched');if(narrow){await p.waitForSelector('.admin-savebar:not([hidden])');assert.equal(await p.locator('.admin-savebar button').isEnabled(),true);await p.locator('#editor-form [name=title]').fill('');await p.locator('.admin-savebar button').click();assert.equal(writes.length,0,'native validation stops incomplete saves');await p.locator('#editor-form [name=title]').fill('修改后的攻略');await p.waitForFunction(()=>document.querySelector('.admin-save-status').textContent.includes('未保存'));
+ await p.locator('.admin-savebar button').click();await p.waitForFunction(()=>document.querySelector('.admin-savebar button').disabled);await p.locator('.admin-savebar button').evaluate(n=>n.click());await p.waitForFunction(()=>!document.querySelector('.admin-savebar button').disabled);assert.equal(writes.length,1,'busy save cannot submit twice');assert.ok((await p.locator('#toast').innerText()).includes('模拟保存冲突'));assert.equal(await p.locator('#editor-form [name=title]').inputValue(),'修改后的攻略');
+ failSave=false;await p.locator('.admin-savebar button').click();await p.waitForFunction(()=>!state.dirty&&!TravelEditor.busy&&!document.querySelector('#main').inert);assert.equal(writes.length,2);assert.equal(writes[1].body.body,'<div class="table-wrap"><table><thead><tr><th>路线</th></tr></thead><tbody><tr><td>古城散步</td></tr></tbody></table></div>');assert.equal(writes[1].body.status,'private');
+ await go('record-edit/1');await p.locator('#record-editor-form [name=title]').fill('修改后的足迹');await p.locator('.admin-savebar button').click();await p.waitForFunction(()=>!state.dirty&&!TravelEditor.busy&&!document.querySelector('#main').inert);assert.equal(writes.length,3);assert.equal(writes[2].body.body,'<p>手记保留</p>');assert.equal(writes[2].body.status,'private');
+ }else{assert.equal(await p.locator('.admin-savebar').isVisible(),false);assert.equal(writes.length,0);}
+ await go('account');await p.waitForFunction(()=>document.querySelector('.admin-savebar').hidden);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await ctx.close();console.log('PASS '+width+': responsive cards/menu/inputs, existing save validation, busy guard, failure keeps edits, guide and record saves, desktop preserved');
+ }}finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1)});
