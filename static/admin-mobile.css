@@ -1,5 +1,5 @@
 /* Mobile administration: the same controls, arranged for touch and narrow screens. */
-.admin-savebar{display:none}
+.admin-savebar,#admin-mobile-tabs{display:none}
 @media(max-width:900px){
  .sidebar{position:sticky;inset:auto;top:0;width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;padding:12px 18px;padding-top:max(12px,env(safe-area-inset-top));z-index:25;box-shadow:0 2px 10px #183b2910;max-height:100dvh;overflow-y:auto}
  .sidebar .brand{font-size:24px;padding:0}.sidebar .brand-mark{width:34px;height:36px;font-size:18px}
@@ -51,3 +51,20 @@
  .admin-keyboard-open .admin-savebar,.editor-focused .admin-savebar{display:none}
 }
 @media(max-width:370px){.record-photo-grid,.media-grid{grid-template-columns:1fr}.admin-card-table .title-cell img{display:none}.admin-savebar{padding-left:12px;padding-right:12px}}
+
+/* Frequent sections stay one tap away; editor actions sit above the tabs. */
+@media(max-width:900px){
+ body{--admin-tabs-height:70px}
+ #admin-mobile-tabs{position:fixed;inset:auto 0 0;z-index:24;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;height:calc(var(--admin-tabs-height) + env(safe-area-inset-bottom));padding:7px max(10px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));background:#fffefa;border-top:1px solid var(--line);box-shadow:0 -3px 15px #243f3508}
+ #admin-mobile-tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:48px;border-radius:9px;font-size:12px;line-height:1.4;color:var(--muted);white-space:nowrap}
+ #admin-mobile-tabs .icon{width:21px;height:21px}
+ #admin-mobile-tabs a[aria-current=page]{background:var(--light);color:var(--green);font-weight:600}
+ #admin-mobile-tabs a:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+ .has-admin-tabs #admin-shell footer{padding-bottom:calc(var(--admin-tabs-height) + 22px + env(safe-area-inset-bottom))}
+ .has-admin-tabs .admin-savebar:not([hidden]){bottom:calc(var(--admin-tabs-height) + env(safe-area-inset-bottom));padding-bottom:12px;box-shadow:none;background:#fffefa}
+ .has-admin-tabs.has-mobile-save #admin-shell footer{padding-bottom:calc(var(--admin-tabs-height) + 95px + env(safe-area-inset-bottom))}
+ .has-admin-tabs #toast{bottom:calc(var(--admin-tabs-height) + 18px + env(safe-area-inset-bottom))}
+ .has-admin-tabs.has-mobile-save #toast{bottom:calc(var(--admin-tabs-height) + 92px + env(safe-area-inset-bottom))}
+ .admin-keyboard-open #admin-mobile-tabs,.editor-focused #admin-mobile-tabs{display:none}
+}
+@media print{#admin-mobile-tabs,.admin-savebar{display:none!important}}

@@ -4,9 +4,19 @@
  const bar=document.createElement('div');bar.className='admin-savebar';bar.hidden=true;
  bar.innerHTML='<span class="admin-save-status" aria-live="polite"></span><button type="button" class="button primary">保存</button>';
  document.querySelector('#admin-shell').append(bar);
+ const tabs=document.createElement('nav');tabs.id='admin-mobile-tabs';tabs.setAttribute('aria-label','常用管理功能');
+ const pin='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+ const chat='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11a9 9 0 0 1-9 9H4l-2 2V11a9 9 0 1 1 19 0Z"/><path d="M7 10h10M7 14h6"/></svg>';
+ tabs.innerHTML=[['guides',icon('book'),'攻略管理'],['records',pin,'旅行足迹'],['media',icon('image'),'图片素材'],['travel-agent',chat,'旅游助手']].map(([key,image,label])=>`<a href="#${key}">${image}<span>${label}</span></a>`).join('');
+ document.querySelector('#admin-shell').append(tabs);
+
  let frame=0,source=null;
  function enhance(){
   frame=0;
+  const view=state.route.split('/')[0],active=['edit','new','trash','import'].includes(view)?'guides':['record-edit','record-new','record-trash'].includes(view)?'records':view;
+  for(const link of tabs.querySelectorAll('a')){if(link.hash==='#'+active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
+  document.body.classList.toggle('has-admin-tabs',!!state.user);
+
   for(const table of document.querySelectorAll('#main .table-wrap>table,#dialog-content .table-wrap>table')){
    if(table.closest('.prose,.travel-editor'))continue;
    const headers=[...table.querySelectorAll('thead th')];if(!headers.length)continue;
