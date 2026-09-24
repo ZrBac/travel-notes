@@ -1,6 +1,5 @@
 /* Phone navigation and explicit offline reading, in the journal's existing palette. */
 #mobile-navigation{display:none}
-.pwa-install-link{background:none;border:0;color:var(--green);padding:10px 0;min-height:44px;font-size:12px}
 .public-site .detail-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 18px}
 .pwa-guide-actions,.pwa-saved-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .pwa-library-intro{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:22px 25px;background:var(--soft);border:1px solid var(--line);border-radius:14px;margin:0 0 24px}
@@ -39,9 +38,8 @@
  .pwa-library-intro,.pwa-saved-card{display:block;padding:20px}.pwa-library-intro .button{margin-top:14px}.pwa-saved-card h2{font-size:18px}.pwa-saved-actions{margin-top:18px;gap:8px}
  .pwa-saved-actions .button{padding:9px 13px}.pwa-snapshot{display:block}.pwa-snapshot>*{display:block;margin:3px 0}
  .pwa-progress{bottom:calc(82px + env(safe-area-inset-bottom))}.public-site #toast{bottom:calc(90px + env(safe-area-inset-bottom));max-width:calc(100% - 36px);width:max-content;white-space:normal}
- .public-site .footer{justify-content:flex-start;gap:4px 18px}.public-site .footer>span{width:100%}.pwa-install-link{font-size:11px}
 }
 @media(display-mode:standalone){.public-site{overscroll-behavior-y:none}}
-@media print{#mobile-navigation,.pwa-progress,.pwa-network,.pwa-guide-actions,.pwa-install-link,.pwa-update{display:none!important}}
+@media print{#mobile-navigation,.pwa-progress,.pwa-network,.pwa-guide-actions,.pwa-update{display:none!important}}
 
 .public-site.is-offline .sidebar{padding-top:calc(54px + env(safe-area-inset-top))}

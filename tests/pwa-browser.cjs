@@ -28,6 +28,8 @@ function worker(){const h=html(),assets=[...h.matchAll(/(?:src|href)="(\/static\
   p.on('pageerror',e=>errors.push(e.message));await ctx.addCookies([{name:'admin_fixture',value:'must-not-leak',url:base}]);
   await p.goto(base);await p.waitForSelector('.journal-lead');await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
   assert.equal(await p.locator('#mobile-navigation a').count(),4);
+  assert.equal(await p.locator('.footer [data-pwa=install]').count(),0);
+  await p.evaluate(()=>location.hash='offline');await p.waitForSelector('.pwa-library-intro');
   await p.locator('[data-pwa=install]').click();await p.waitForSelector('#pwa-install[open]');await p.locator('[data-pwa=close-install]').last().click();
   await p.evaluate(()=>location.hash='guide/1');await p.waitForSelector('[data-pwa=save]');await p.locator('[data-pwa=save]').click();
   await p.waitForFunction(async()=>await TravelPWA.has(1));await p.waitForFunction(()=>document.querySelector('#pwa-progress').hidden);
