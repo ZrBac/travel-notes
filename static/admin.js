@@ -34,15 +34,18 @@ async function requestAPI(path,options={},prefetch=false){
     throw e;
   }finally{if(prefetch)adminPrefetches.delete(controller);clearTimeout(timer);for(const signal of signals)signal.removeEventListener('abort',abort);}
 }
-// A short-lived, bounded cache in this tab only. Never store sessions or editor bodies.
+// A short-lived, bounded cache in this tab only. Never persist sessions, editor bodies or task results to browser storage.
 const adminDataCache=new Map(),adminPrefetches=new Set();let adminDataEpoch=0;
 const adminEvents=typeof BroadcastChannel==='function'?new BroadcastChannel('travel-admin-events'):null;
 function clearAdminData(broadcast=false){adminDataEpoch++;adminDataCache.clear();if(broadcast)adminEvents?.postMessage('invalidate');}
 function stopAdminPrefetch(){for(const controller of adminPrefetches)controller.abort();adminPrefetches.clear();for(const [key,entry]of adminDataCache)if(entry.prefetch&&entry.pending)adminDataCache.delete(key);}
-function cacheableAdminPath(path){return /^\/(?:admin\/(?:taxonomy|overview|media|guides)|records)(?:\?|$)/.test(path);}
+function cacheableAdminPath(path){return /^\/(?:admin\/(?:taxonomy|overview|media|guides)|records)(?:\?|$)/.test(path)||/^\/admin\/travel-agent\/tasks\/\d+\?updated=[^&]+$/.test(path);}
 async function api(path,options={}){
   const {prefetch=false,...requestOptions}=options;
   const read=(options.method||'GET').toUpperCase()==='GET';
+  // These POST endpoints only render previews; they do not change stored content.
+  const preview=(options.method||'GET').toUpperCase()==='POST'&&/^\/admin\/(?:preview|html-imports\/[a-f0-9]{32}\/preview)$/.test(path);
+  if(preview)return requestAPI(path,requestOptions);
   if(!read){clearAdminData(true);try{return await requestAPI(path,requestOptions);}finally{clearAdminData(true);}}
   if(!state.user||!cacheableAdminPath(path))return requestAPI(path,requestOptions);
   const now=Date.now();let entry=adminDataCache.get(path);

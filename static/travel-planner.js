@@ -55,7 +55,10 @@ const TravelPlanner = (() => {
   async function loadDetail(token=epoch){
     if(!selected){$('#planner-detail').innerHTML=empty('让计划先有一个起点','填好旅行想法，助手会结合季节、当地特色与参考资料整理方案。');return;}
     const id=selected,version=revision;let data;
-    try{data=await api(endpoint+'/tasks/'+id);}catch(error){
+    const current=tasks.find(t=>t.id===id);
+    // A fresh task list supplies the version; running tasks always bypass this cache.
+    const query=current?.status==='done'&&current.updated_at?'?updated='+encodeURIComponent(current.updated_at):'';
+    try{data=await api(endpoint+'/tasks/'+id+query);}catch(error){
       if(token!==epoch||version!==revision||id!==selected||!here())return;
       if(error.status!==404)throw error;
       forgetTask(id);await loadDetail(token);return;
@@ -152,7 +155,7 @@ const TravelPlanner = (() => {
         busy=true;node.disabled=true;const id=detail.id,mode=node.dataset.mode;
         const answer=await api(endpoint+'/tasks/'+id+'/publication?mode='+mode);
         if(token!==epoch||selected!==id)return;
-        $('#planner-publication').innerHTML=`<section class="planner-publication-preview"><h3>${mode==='split'?'按候选地独立存档':'发布前预览'} · ${answer.guides.length} 篇</h3><p>检查下方内容后选择存为草稿或公开发布。公开发布后，所有访客都能看到。</p>${answer.guides.map(g=>`<details><summary>${esc(g.title)} · ${g.days} 天</summary><p>${esc(g.summary)}</p><article class="prose planner-prose">${g.html}</article><details><summary>参考资料</summary><pre>${esc(g.sources)}</pre></details></details>`).join('')}<div class="actions"><button type="button" class="button primary" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="public">公开发布这 ${answer.guides.length} 篇攻略</button><button type="button" class="button" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="draft">存为 ${answer.guides.length} 篇草稿</button><button type="button" class="button" data-planner="close-publication">收起预览</button></div></section>`;
+        $('#planner-publication').innerHTML=`<section class="planner-publication-preview"><h3>${mode==='split'?'按候选地独立存档':'发布前预览'} · ${answer.guides.length} 篇</h3><p>检查下方内容后选择存为草稿或公开发布。公开发布后，所有访客都能看到。</p>${answer.guides.map(g=>`<details><summary>${esc(g.title)} · ${g.days} 天</summary><p>${esc(g.summary)}</p><article class="prose planner-prose">${AdminImages.prepareHTML(g.html)}</article><details><summary>参考资料</summary><pre>${esc(g.sources)}</pre></details></details>`).join('')}<div class="actions"><button type="button" class="button primary" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="public">公开发布这 ${answer.guides.length} 篇攻略</button><button type="button" class="button" data-planner="publish" data-id="${id}" data-mode="${mode}" data-status="draft">存为 ${answer.guides.length} 篇草稿</button><button type="button" class="button" data-planner="close-publication">收起预览</button></div></section>`;
         $('#planner-publication').scrollIntoView({behavior:'smooth',block:'start'});
       }
       if(action==='close-publication')$('#planner-publication').replaceChildren();

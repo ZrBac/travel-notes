@@ -2,6 +2,19 @@
 const Footprints=(()=>{
   const filters={q:'',destination:'',year:'',page:1,guide:''};
   let album=[],photoIndex=0;
+  // Per-tab public summaries only. Never persist or reuse administrator preview data.
+  const listCache=new Map(),CACHE_TTL=15000;
+  const listKey=()=>new URLSearchParams(filters).toString();
+  function remember(key,data){
+    if(adminPreview||!data||data.records.some(r=>r.status!=='public'||r.deleted_at))return;
+    listCache.delete(key);listCache.set(key,{data,expires:Date.now()+CACHE_TTL});
+    while(listCache.size>8)listCache.delete(listCache.keys().next().value);
+  }
+  function seed(data){
+    listCache.clear();if(!data)return;
+    remember(new URLSearchParams({q:'',destination:'',year:'',page:1,guide:''}).toString(),data);
+  }
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)listCache.clear();});
   const dates=r=>r.start_date.replaceAll('-','.')+(r.end_date&&r.end_date!==r.start_date?' — '+r.end_date.replaceAll('-','.'):'');
   function card(r){return `<article class="memory-card"><a href="#record/${r.id}"><div class="memory-photo"><img data-travel-src="${esc(travelImageUrl(r.cover,640))}" alt="${esc(r.destination)}旅行记录封面" width="640" height="480" loading="lazy"><span>${r.photo_count} 张照片</span></div><div class="memory-copy"><span class="memory-date">${esc(dates(r))} · ${esc(r.destination)}</span><h3>${esc(r.title)}</h3><p>${esc(r.summary||'把旅途里的片刻，留在这里。')}</p>${state.admin&&r.status!=='public'?`<span class="status-badge ${r.status}">${statusName[r.status]}</span>`:''}</div></a></article>`;}
   function home(guideCard){
@@ -18,15 +31,22 @@ const Footprints=(()=>{
   }
   async function list(gen,guide=''){
     updateShell('footprints');if(filters.guide!==guide){filters.guide=guide;filters.page=1;}
-    const data=await api('/records?'+new URLSearchParams(filters));if(gen!==state.load)return;
+    const key=listKey(),cached=adminPreview?null:listCache.get(key);
+    if(cached&&cached.expires>Date.now()){renderList(cached.data,guide);return;}
+    listCache.delete(key);
+    renderList({records:[],destinations:[],years:[],total:0,pages:1,page:filters.page},guide,true);
+    const data=await api('/records?'+key);if(gen!==state.load)return;
+    remember(key,data);renderList(data,guide);
+  }
+  function renderList(data,guide,pending=false){
     const linked=state.guides.find(g=>String(g.id)===guide);
     $('#app').innerHTML=heading('旅行足迹',linked?'与「'+linked.title+'」相关的照片与游记。':'按日期和地点，翻看每一段旅程的真实片刻。','沿途的照片与故事')+
       (guide?`<p class="memory-back"><a href="#guide/${Number(guide)}">← 返回关联攻略</a> · <a href="#footprints">查看全部足迹</a></p>`:'')+
       `<form id="memory-filter" class="memory-filter"><label>搜索记录<input name="q" type="search" placeholder="地点、标题或片刻…" value="${esc(filters.q)}"></label><label>地点<select name="destination"><option value="">所有地点</option>${data.destinations.map(d=>`<option ${d===filters.destination?'selected':''}>${esc(d)}</option>`).join('')}</select></label><label>年份<select name="year"><option value="">所有年份</option>${data.years.map(y=>`<option ${String(y)===filters.year?'selected':''}>${y}</option>`).join('')}</select></label><button class="button secondary" type="submit">筛选</button><button class="button ghost" type="button" data-fp="reset">重置</button></form>`+
-      `<p class="memory-total">共 ${data.total} 篇旅行记录 · 按游玩日期排列</p>`+
-      (data.records.length?`<div class="memory-grid">${data.records.map(card).join('')}</div>`:`<div class="memory-empty"><span>${icon('image')}</span><h3>${data.total?'暂时没有记录':'还没有找到这段回忆'}</h3><p>${filters.q||filters.destination||filters.year?'换个筛选条件，再翻翻看。':'照片和故事，会随着每一次旅行慢慢积累。'}</p></div>`)+
+      `<p class="memory-total">${pending?'正在读取旅行记录…':`共 ${data.total} 篇旅行记录 · 按游玩日期排列`}</p>`+
+      (pending?'<div class="memory-loading" aria-label="旅行足迹列表正在加载"><span></span><span></span><span></span></div>':data.records.length?`<div class="memory-grid">${data.records.map(card).join('')}</div>`:`<div class="memory-empty"><span>${icon('image')}</span><h3>${data.total?'暂时没有记录':'还没有找到这段回忆'}</h3><p>${filters.q||filters.destination||filters.year?'换个筛选条件，再翻翻看。':'照片和故事，会随着每一次旅行慢慢积累。'}</p></div>`)+
       (data.pages>1?`<div class="memory-pagination"><button class="button secondary" data-fp="page" data-page="${data.page-1}" ${data.page===1?'disabled':''}>上一页</button><span>${data.page} / ${data.pages}</span><button class="button secondary" data-fp="page" data-page="${data.page+1}" ${data.page===data.pages?'disabled':''}>下一页</button></div>`:'');
-    $('#memory-filter').addEventListener('submit',event=>{event.preventDefault();Object.assign(filters,Object.fromEntries(new FormData(event.currentTarget)),{page:1});route();});
+    $('#memory-filter').addEventListener('submit',event=>{event.preventDefault();Object.assign(filters,Object.fromEntries(new FormData(event.currentTarget)),{page:1});listCache.delete(listKey());route();});
   }
   async function detail(id,gen){
     const {record:r,guide}=await api('/records/'+id+'?view=read');if(gen!==state.load)return;
@@ -48,5 +68,5 @@ const Footprints=(()=>{
   function showPhoto(index){if(!album.length)return;photoIndex=(index+album.length)%album.length;const dialog=viewer(),photo=album[photoIndex];$('img',dialog).setAttribute('data-travel-src',travelImageUrl(photo.url,1280));$('img',dialog).alt=photo.caption||'旅行照片 '+(photoIndex+1);$('#viewer-count').textContent=(photoIndex+1)+' / '+album.length;$('#viewer-caption').textContent=photo.caption||'';dialog.querySelectorAll('.viewer-main button').forEach(b=>b.hidden=album.length===1);if(!dialog.open)dialog.showModal();}
   async function share(){const url=location.origin+location.pathname+location.hash;try{if(!navigator.clipboard?.writeText)throw Error();await navigator.clipboard.writeText(url);toast('分享链接已复制');}catch{let dialog=$('#memory-share');if(!dialog){dialog=document.createElement('dialog');dialog.id='memory-share';dialog.innerHTML='<h2>分享这段旅程</h2><p>复制下面的链接，分享给一起出发的人。</p><label>公开记录链接<input readonly aria-label="公开记录链接"></label><button class="button primary" data-fp="share-close">完成</button>';document.body.append(dialog);}const input=$('input',dialog);input.value=url;dialog.showModal();input.focus();input.select();}}
   document.addEventListener('click',e=>{const node=e.target.closest('[data-fp]');if(!node)return;const a=node.dataset.fp;if(a==='reset'){Object.assign(filters,{q:'',destination:'',year:'',page:1});route();}if(a==='page'){filters.page=Number(node.dataset.page);route();}if(a==='photo')showPhoto(Number(node.dataset.index));if(a==='previous')showPhoto(photoIndex-1);if(a==='next')showPhoto(photoIndex+1);if(a==='close')$('#memory-viewer').close();if(a==='share')share();if(a==='share-close')$('#memory-share').close();});
-  return {home,list,detail,related,card};
+  return {home,list,detail,related,card,seed};
 })();

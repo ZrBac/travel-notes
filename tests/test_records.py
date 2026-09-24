@@ -39,6 +39,22 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(data['record_count'],1);self.assertEqual(data['records'][0]['id'],public['id'])
         self.assertEqual(self.visitor.post('/api/admin/records/1/action',json={'action':'purge'}).status_code,401)
 
+    def test_bootstrap_preloads_public_first_page_without_private_metadata(self):
+        self.login()
+        for i in range(13):self.record(title='公开足迹 '+str(i),status='public')
+        self.record(title='私密足迹',destination='不公开地点')
+        data=self.visitor.get('/api/bootstrap').json
+        page=data['record_page']
+        self.assertEqual(len(data['records']),3)
+        self.assertEqual(page,self.visitor.get('/api/records').json)
+        self.assertEqual(len(page['records']),12)
+        self.assertEqual(page['pages'],2)
+        self.assertNotIn('不公开地点',page['destinations'])
+        for record in page['records']:
+            self.assertEqual(record['status'],'public')
+            self.assertNotIn('photos',record)
+            self.assertNotIn('body',record)
+
     def test_photo_visibility_revalidates_cached_variants(self):
         self.login();photo=self.photo();row=self.record(photos=[{'url':photo,'caption':'古城日落'}],body='',status='public')
         url='/api/records/'+str(row['id'])

@@ -310,8 +310,8 @@ def detail(guide_id):
 @app.get('/api/bootstrap')
 def bootstrap():
     account=get_session().get_json()
-    recent=record_listing(limit=3)
-    return jsonify(site=site_settings(),session=account,guides=guides().get_json()['guides'],records=recent['records'],record_count=recent['total'])
+    recent=record_listing(limit=12)
+    return jsonify(site=site_settings(),session=account,guides=guides().get_json()['guides'],records=recent['records'][:3],record_count=recent['total'],record_page=recent)
 
 def record_row(record_id,lock=False):
     row=db().execute('SELECT * FROM travel_records WHERE id=%s'+(' FOR UPDATE' if lock else ''),(record_id,)).fetchone()

@@ -208,3 +208,12 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 验证：`tests/test_pwa.py` 检查匿名外壳、资源范围、版本更新、安装图标；`node tests/pwa-browser.cjs` 使用本机模拟 HTTP 站点和真实 Service Worker，覆盖保存后断网冷启动、图片、权限撤回、管理员预览隔离、取消/空间不足/失败时保留旧版、恢复联网、移除副本和更新应用，不读取生产登录态。Playwright 的尺寸模拟不替代 iPhone 真机 Safari 验证。
 
 运维：如以后撤回整个 PWA，先在 `/sw.js` 发布卸载 worker，清理本应用的 `travel-shell-*` 缓存并调用 `self.registration.unregister()`；根据用户要求处理 `travel-offline` 数据库。不要只删除 worker 路由，否则已安装设备可能继续保留旧 worker。升级时应保持已存储数据结构兼容或通过 IndexedDB 版本迁移。
+
+
+### 足迹预加载与缓存边界
+
+首页 bootstrap 同时返回足迹第一页的最多 12 条摘要，首页仍只展示 3 条；公开足迹首次切入直接复用。足迹列表按筛选条件在当前标签页内保留 15 秒，最多 8 组，隐藏页面即清除；主动筛选重新请求，管理员预览始终重新鉴权读取。未命中缓存时先显示列表框架，慢请求不会被全页加载提示覆盖。此缓存不进入 Service Worker、IndexedDB 或 Nginx，详情和图片继续核验权限。
+
+后台正文／HTML 导入预览属于只读渲染，不再清空其他列表缓存；真正的写入仍在请求前后清除，并通知其他管理标签页。旅游助手每次切入仍读取最新任务列表，仅对已完成且更新时间相同的结果复用现有 30 秒内存缓存；运行中任务和编辑正文不缓存。缓存遵循原有容量、页面隐藏、退出和写入失效规则，不持久保存任务内容。足迹编辑相册及助手发布预览图片统一使用可取消、并发最多 2 张的图片队列。
+
+回归：`node tests/footprints-loading-browser.cjs`、`node tests/admin-loading-browser.cjs`、`node tests/admin-cache-images-browser.cjs`；后端首屏分页及私密元数据隔离由 `tests/test_records.py` 验证。

@@ -23,7 +23,8 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
    const u=new URL(r.request().url());assert.equal(u.origin,'http://admin.test');
    if(u.pathname.startsWith('/api/')){
     const method=r.request().method();let data,status=200,delay=0;
-    if(method!=='GET'){assert.equal(u.pathname,'/api/test-write');writes.push({method,body:r.request().postDataJSON(),csrf:r.request().headers()['x-csrf-token']});delay=1600;data={ok:true};}
+    if(method==='POST'&&/^\/api\/admin\/(?:preview|html-imports\/[a-f0-9]{32}\/preview)$/.test(u.pathname)){assert.equal(r.request().headers()['x-csrf-token'],'test-csrf');data={html:'<p>预览</p>'};}
+    else if(method!=='GET'){assert.equal(u.pathname,'/api/test-write');writes.push({method,body:r.request().postDataJSON(),csrf:r.request().headers()['x-csrf-token']});delay=1600;data={ok:true};}
     else if(u.pathname==='/api/session')data={csrf:'test-csrf',user:{username:'tester',display_name:'测试管理员'}};
     else if(u.pathname==='/api/admin/media'){mediaCalls++;delay=mediaDelay;data={media,defaults:[]};}
     else if(u.pathname==='/api/admin/taxonomy'){taxCalls++;delay=taxDelay;taxPending=!!delay;data={categories:[],tags:[]};}
@@ -54,6 +55,7 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await p.evaluate(()=>{window.loadingFlashes=0;window.loadingObserver=new MutationObserver(()=>{if(document.querySelector('#main .initial-loading'))loadingFlashes++;});loadingObserver.observe(document.querySelector('#main'),{childList:true});location.hash='media';});await p.waitForSelector('.media-card');
   assert.equal(mediaCalls,warmCalls,'returning to a fresh list makes no network request');assert.equal(await p.evaluate(()=>loadingFlashes),0,'fresh lists do not flash the loading screen');
   const original=await p.evaluate(async()=>{const a=await api('/admin/media');a.media[0].name='local edit';return (await api('/admin/media')).media[0].name;});assert.equal(original,'照片 001','cached metadata cannot be mutated by a caller');
+  const beforePreview=mediaCalls;await p.evaluate(async()=>{await api('/admin/preview',{method:'POST',body:{body:'预览'}});await api('/admin/html-imports/'+'a'.repeat(32)+'/preview',{method:'POST',body:{}});await api('/admin/media');});assert.equal(mediaCalls,beforePreview,'render-only previews must retain list cache');
   await p.evaluate(()=>{clockOffset+=31000;location.hash='account';});await p.waitForSelector('#account-form');
   const coldCalls=mediaCalls;if(width<900)await p.locator('#admin-menu-toggle').click();await p.hover('#navigation [href="#media"]');await p.waitForFunction(()=>adminDataCache.get('/admin/media')?.expires>Date.now());assert.equal(mediaCalls,coldCalls+1,'menu intent prefetches only the requested page');
   await p.locator('#navigation [href="#media"]').click();await p.waitForSelector('.media-card');assert.equal(mediaCalls,coldCalls+1,'navigation consumes the prefetched result');
@@ -71,6 +73,7 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await p.evaluate(()=>{window.slowBody=false;});await p.locator('[data-action=retry-page]').click();await p.waitForSelector('#settings-form');
   await p.evaluate(()=>{window.writeResult=null;api('/test-write',{method:'POST',body:{title:'保留写入'}}).then(v=>window.writeResult=v).catch(e=>window.writeResult={error:e.message});location.hash='account';});
   await p.waitForSelector('#account-form');await p.waitForFunction(()=>window.writeResult!==null);assert.deepEqual(await p.evaluate(()=>writeResult),{ok:true});assert.deepEqual(writes,[{method:'POST',body:{title:'保留写入'},csrf:'test-csrf'}]);
+  assert.equal(await p.evaluate(()=>adminDataCache.size),0,'real writes still invalidate cache');
   assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'mobile overflow');
   await p.evaluate(()=>api('/test-expired').catch(()=>{}));await p.waitForSelector('#login-page:not([hidden])');assert.equal(await p.locator('#admin-shell').isVisible(),false);assert.equal(await p.locator('#main').innerText(),'');assert.equal(await p.evaluate(()=>adminDataCache.size),0);
   assert.deepEqual(errors,[]);await context.close();
