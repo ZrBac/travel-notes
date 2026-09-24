@@ -1,6 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const esc = (value = '') => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paths = {
+  download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
   grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   map:'<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z"/><path d="M9 3v15M15 6v15"/>',
   tag:'<path d="M20 13 13 20a2 2 0 0 1-3 0l-7-7V3h10l7 7a2 2 0 0 1 0 3Z"/><circle cx="7.5" cy="7.5" r="1"/>',
@@ -72,11 +73,18 @@ function updateShell(view='home') {
     $('#app').before(notice);
   }
   const entries=[['home','grid','首页'],['guides','book','攻略'],['footprints','image','足迹']];
+  const installed=TravelPWA.standalone()&&!adminPreview;
+  document.body.classList.toggle('is-standalone',installed);
+  if(installed)entries.push(['offline','download','离线']);
+  $('#browser-tools').hidden=installed;
+  $('#site-more summary span').textContent=installed?'浏览':'更多';
+  $('#site-more summary').setAttribute('aria-label',installed?'更多浏览方式':'更多功能');
   $('#more-autumn').hidden=!autumnGuides().length;
-  $('#site-more').classList.toggle('has-current',['offline','destinations','tags','autumn'].includes(navView));
+  $('#site-more').classList.toggle('has-current',(['destinations','tags','autumn'].includes(navView)||!installed&&navView==='offline'));
   for(const link of document.querySelectorAll('#site-more a[href]')){if(link.hash==='#'+navView)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
   $('#navigation').innerHTML=entries.map(([key,ico,label])=>`<a class="nav-item ${navView===key?'active':''}" href="#${key}" ${navView===key?'aria-current="page"':''}>${icon(ico)}<span>${label}</span>${key==='guides'?`<span class="nav-count">${state.guides.length}</span>`:''}</a>`).join('');
   const mobile=entries;
+  $('#mobile-navigation').style.setProperty('--nav-columns',String(mobile.length));
   $('#mobile-navigation').innerHTML=mobile.map(([key,ico,label])=>`<a href="#${key}" ${navView===key?'aria-current="page"':''}>${icon(ico)}<span>${label}</span></a>`).join('');
   $('#breadcrumb').textContent=({offline:'已保存攻略',home:'旅行首页',guides:'旅行攻略',footprints:'旅行足迹',record:'足迹详情',autumn:'秋游七地对比',destinations:'目的地',tags:'灵感标签',trash:'回收站',guide:'攻略详情',edit:'编辑攻略',new:'新建攻略'})[view]||'攻略收藏';
 }
@@ -207,6 +215,10 @@ async function route(){
   try{if(view==='offline'){if(id&&/^\d+$/.test(id))await detail(id,generation,true);else await TravelPWA.list(generation);}else if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='tags')tags();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#offline">查看已保存攻略</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
 }
 const moreMenu=$('#site-more');
+// Installation can change without a page reload; keep the current content intact.
+function syncDisplayMode(){moreMenu.open=false;if(state.site)updateShell(document.body.dataset.view||'home');}
+matchMedia('(display-mode: standalone)').addEventListener('change',syncDisplayMode);
+window.addEventListener('pageshow',syncDisplayMode);
 document.addEventListener('click',event=>{if(moreMenu.open&&(!moreMenu.contains(event.target)||event.target.closest('a,button')))moreMenu.open=false;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&moreMenu.open){moreMenu.open=false;$('summary',moreMenu).focus();}});
 window.addEventListener('hashchange',()=>{moreMenu.open=false;route();});

@@ -63,6 +63,39 @@ function worker(){const h=html(),assets=[...h.matchAll(/(?:src|href)="(\/static\
   visible=true;await p.evaluate(()=>location.hash='guide/1');await p.waitForSelector('[data-pwa=save]');await p.locator('[data-pwa=save]').click();await p.waitForFunction(()=>document.querySelector('#pwa-progress').hidden);await p.evaluate(()=>location.hash='offline');await p.waitForSelector('[data-pwa=remove]');p.once('dialog',d=>d.accept());await p.locator('[data-pwa=remove]').click();await p.waitForFunction(async()=>!await TravelPWA.has(1));
   const preview=await ctx.newPage();await preview.goto(base+'/?preview=1#guide/1');await preview.waitForSelector('.article-header');assert.equal(await preview.locator('[data-pwa=save]').count(),0);
   assert.deepEqual(errors,[]);await ctx.close();
+  for(const mode of ['browser','ios','display-mode']){
+   const context=await browser.newContext({viewport:{width:390,height:844}});
+   await context.addInitScript(mode=>{
+    window.fixtureInstalled=mode!=='browser';
+    Object.defineProperty(navigator,'standalone',{configurable:true,get:()=>mode==='ios'&&window.fixtureInstalled});
+    const original=window.matchMedia.bind(window),display=new EventTarget();
+    Object.defineProperty(display,'matches',{get:()=>mode!=='ios'&&window.fixtureInstalled});display.media='(display-mode: standalone)';
+    window.matchMedia=q=>q===display.media?display:original(q);
+    window.changeDisplayMode=value=>{window.fixtureInstalled=value;display.dispatchEvent(new Event('change'));};
+   },mode);
+   const page=await context.newPage(),issues=[];page.on('pageerror',e=>issues.push(e.message));
+   await page.goto(base);await page.waitForSelector('.journal-lead');
+   const installed=mode!=='browser',labels=installed?['首页','攻略','足迹','离线']:['首页','攻略','足迹'];
+   for(const width of [320,390,768,844,1440]){
+    await page.setViewportSize({width,height:844});
+    const nav=width<=640?'#mobile-navigation':'#navigation';
+    assert.deepEqual(await page.locator(nav+' a > span:first-of-type').allInnerTexts(),labels,mode+' '+width);
+    assert.ok(await page.locator(nav).isVisible());
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    if(width<=640){const boxes=await page.locator(nav+' a').evaluateAll(ns=>ns.map(n=>n.getBoundingClientRect().width));assert.ok(Math.max(...boxes)-Math.min(...boxes)<1,'equal tab widths');}
+    await page.locator('#site-more summary').click();
+    assert.equal(await page.locator('#browser-tools').isVisible(),!installed);
+    assert.equal(await page.locator('#site-more summary span').innerText(),installed?'浏览':'更多');
+    assert.ok(await page.locator('.site-more-panel').evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}));
+    await page.keyboard.press('Escape');
+    if(width===390)await page.screenshot({path:'/tmp/travel-context-nav-'+mode+'.png',fullPage:true});
+   }
+   await page.setViewportSize({width:390,height:844});
+   if(installed){await page.locator('#mobile-navigation [href="#offline"]').click();await page.waitForSelector('.pwa-library-intro');assert.equal(await page.locator('#mobile-navigation [aria-current=page]').innerText(),'离线');assert.equal(await page.locator('#site-more').evaluate(n=>n.classList.contains('has-current')),false);}
+   else{await page.locator('#mobile-navigation [href="#guides"]').click();await page.waitForSelector('#search');await page.locator('#search').fill('泉州');await page.evaluate(()=>{window.previousContent=document.querySelector('#app').firstChild;changeDisplayMode(true);});assert.equal(await page.locator('#mobile-navigation a').count(),4);assert.equal(await page.locator('#search').inputValue(),'泉州');assert.ok(await page.evaluate(()=>previousContent===document.querySelector('#app').firstChild),'mode switch preserves page and form');await page.evaluate(()=>changeDisplayMode(false));assert.equal(await page.locator('#mobile-navigation a').count(),3);}
+   assert.deepEqual(issues,[]);await context.close();
+  }
+  console.log('PASS: browser / iOS home-screen / standalone navigation, 320–1440px and landscape, offline selection, hidden redundant tools, live mode changes preserve content');
   console.log('PASS: real SW installation/update; anonymous downloads; offline cold reload, text and images; responsive widths; no API/admin/preview caching; failed update/quota/cancel preservation; reconnect refresh; missing-image labels; visibility revocation; deletion; preview exclusion');
  }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

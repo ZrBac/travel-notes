@@ -184,5 +184,5 @@ const TravelPWA=(()=>{
    if(action==='update-app'){if(busy){toast('请等待攻略保存完成，或先取消保存。');return;}(await registration)?.waiting?.postMessage({type:'APPLY_UPDATE'});}
   }catch(error){toast(error.message||'操作未完成，请重试。',true);}
  });
- return {start,supported,list,read,release,attachGuide,has:async id=>supported&&!!await get('catalog',id)};
+ return {start,supported,standalone,list,read,release,attachGuide,has:async id=>supported&&!!await get('catalog',id)};
 })();
