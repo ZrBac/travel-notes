@@ -13,7 +13,7 @@ StateDirectory=travel-xhs
 StateDirectoryMode=0700
 Environment=XHS_STATE_DIR=/var/lib/travel-xhs
 UMask=0077
-TimeoutStartSec=60
+TimeoutStartSec=105
 TimeoutStopSec=5
 KillMode=control-group
 MemoryMax=768M

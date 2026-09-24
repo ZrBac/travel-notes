@@ -6,7 +6,7 @@ function resource(url){
  catch{return {host:''};}
 }
 function errorName(error){return /^[A-Za-z]{1,40}Error$/.test(error.name)?error.name:'Error';}
-async function runCheck({stateDir,origin='https://www.xiaohongshu.com',executablePath,requestLimit=300,apiLimit=40,duration=45000,scriptQuietMs=750}={}){
+async function runCheck({stateDir,origin='https://www.xiaohongshu.com',executablePath,requestLimit=300,apiLimit=40,duration=90000,scriptQuietMs=750}={}){
  process.umask(0o077);fs.mkdirSync(stateDir,{recursive:true,mode:0o700});
  const started=Date.now(),deadline=started+duration;
  const report={result:'unavailable',phase:'launch',requests:0,request_types:{},response_statuses:{},failed_requests:0,cancelled_requests:0,actions:[],page_errors:[]};
@@ -49,7 +49,7 @@ async function runCheck({stateDir,origin='https://www.xiaohongshu.com',executabl
  }
  try{
   context=await chromium.launchPersistentContext(path.join(stateDir,'profile'),{headless:true,executablePath,locale:'zh-CN',viewport:{width:1280,height:900},args:['--no-sandbox'],timeout:Math.min(10000,duration)});
-  timer=setTimeout(()=>void stop('timeout',deadlineReason()),Math.max(1,deadline-Date.now()));
+  timer=setTimeout(()=>void stop('timeout',deadlineReason()),Math.max(1,Math.min(60000,deadline-Date.now())));
   context.on('request',request=>{
    const id=++report.requests,type=request.resourceType();report.request_types[type]=(report.request_types[type]||0)+1;
    const entry={id,type,...resource(request.url()),started_ms:Date.now()-started,response_received:false};pending.set(request,entry);log({event:'request',...entry});
@@ -92,6 +92,7 @@ async function runCheck({stateDir,origin='https://www.xiaohongshu.com',executabl
    if(info.phone||info.qr){report.phone_visible=info.phone;report.qr_visible=info.qr;report.login_visible=info.login;report.result='login_ready';report.phase='login_ready';break;}
    const ready=(domReady||info.ready_state==='complete')&&scriptCount()===0&&Date.now()-lastScriptActivity>=scriptQuietMs;
    if(!attempted&&!info.login&&ready&&(info.guestInput||info.loginButton)){
+    clearTimeout(timer);timer=setTimeout(()=>void stop('timeout',deadlineReason()),Math.max(1,Math.min(30000,deadline-Date.now())));
     report.phase='open_login';attempted=true;report.ready_before_click={...info,script_quiet_ms:Date.now()-lastScriptActivity};
     const target=info.loginButton?page.getByRole('button',{name:'登录',exact:true}).first():page.getByPlaceholder('登录探索更多内容');
     report.actions.push(info.loginButton?'click_login':'click_login_entry');

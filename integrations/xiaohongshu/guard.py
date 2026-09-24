@@ -25,7 +25,7 @@ def read_state(folder):
         raise ValueError('Invalid cooldown state')
     return data
 
-def check(folder,command,now=None,timeout=55):
+def check(folder,command,now=None,timeout=100):
     folder=Path(folder);folder.mkdir(mode=0o700,parents=True,exist_ok=True)
     with (folder/'run.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
