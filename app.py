@@ -132,6 +132,16 @@ def integrity_error(error):
 @app.get('/')
 def index(): return Response(page_html('index.html'),mimetype='text/html',headers={'Cache-Control':'no-cache'})
 
+@app.get('/sw.js')
+def service_worker():
+    from pwa import worker_response
+    return worker_response()
+
+@app.get('/manifest.webmanifest')
+def web_manifest():
+    from pwa import manifest_response
+    return manifest_response()
+
 @app.get('/api/health')
 def health():
     try:

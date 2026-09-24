@@ -34,12 +34,12 @@ const record={id:1,title:'海边散步的一天',destination:'泉州',start_date
    await page.goto('http://journal.test/');await page.locator('.journal-lead h2').waitFor();await fits();
    assert.equal(await page.locator('.journal-lead h2').innerText(),record.title);
    await page.screenshot({path:`/tmp/editorial-home-${width}.png`,fullPage:true});
-   await page.locator('#navigation a[href="#guides"]').click();await page.locator('#search').fill('山间');
+   await page.locator('nav a[href="#guides"]:visible').click();await page.locator('#search').fill('山间');
    assert.equal(await page.locator('#guide-grid .guide-card').count(),1);await fits();
    await page.locator('#search').fill('不存在');assert.equal(await page.locator('#guide-grid .guide-card').count(),0);
    await page.locator('#search').fill('');await page.locator('#sort').selectOption('days');
    await page.locator('#guide-grid a[href="#guide/1"]').click();await page.locator('.article-header').waitFor();await fits();
-   await page.locator('#navigation a[href="#footprints"]').click();await page.locator('#memory-filter').waitFor();await fits();
+   await page.locator('nav a[href="#footprints"]:visible').click();await page.locator('#memory-filter').waitFor();await fits();
    await page.locator('.memory-card a').first().click();await page.locator('.memory-header').waitFor();await fits();
    await page.locator('[data-fp="photo"]').click();assert.equal(await page.locator('#memory-viewer').evaluate(d=>d.open),true);await page.keyboard.press('Escape');
    for(const hash of ['destinations','tags']){await page.locator(`#navigation a[href="#${hash}"]`).click();await page.locator(hash==='tags'?'.tag-tile':'.destination-card').first().waitFor();await fits();}
