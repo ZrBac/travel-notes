@@ -10,7 +10,7 @@ const server=http.createServer((req,res)=>{
  if(scenario==='limit'){res.end('<body>'+Array.from({length:60},(_,i)=>`<img src="/asset?${i}">`).join('')+'</body>');return;}
  res.setHeader('Set-Cookie','fixture_session=SECRET-FIXTURE; Max-Age=3600; HttpOnly; SameSite=Lax');
  const action=scenario==='click-blocked'?"location.href='/website-login/error'":"document.body.innerHTML='<input placeholder=手机号><input placeholder=验证码>'";
- res.end(`<body><input placeholder="登录探索更多内容"><img src="/asset"><script>document.querySelector('input').onclick=()=>{${action}};</script></body>`);
+ res.end(`<body><canvas class="qrcode" width="64" height="64"></canvas><input placeholder="登录探索更多内容"><img src="/asset"><script>document.querySelector('input').onclick=()=>{${action}};</script></body>`);
 });await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
 try{
  const persistent=path.join(root,'persistent');let report=await runCheck({executablePath:process.env.XHS_TEST_BROWSER,stateDir:persistent,origin});assert.equal(report.result,'login_ready');assert.equal(report.phone_visible,true);
