@@ -230,3 +230,6 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 
 
 旧版 Safari 的后台缓存兼容：缓存数据仅来自 JSON 接口。`cloneAdminData` 在支持时使用原生 `structuredClone`，缺少该 API 时通过 JSON 深拷贝保留列表之间的独立副本；不改变缓存有效期、写入失效、会话检查或私密内容边界。回归命令 `LEGACY_BROWSER=1 node tests/admin-loading-browser.cjs` 禁用 structuredClone 和 BroadcastChannel，验证页面可用、缓存不被调用方修改、超时重试、切页取消及退出清理；同一套测试同时覆盖现代浏览器。
+
+
+JavaScript 传输压缩：Nginx 的 gzip_types 同时包含 text/javascript 与 application/javascript，避免静态文件使用前一种 MIME 时漏掉压缩。编辑器 Jodit 的 JS/CSS 地址带各自内容 SHA256 前 16 位版本号，复用既有不可变静态缓存规则；更换编辑器文件时同步更新版本号。配置发布须先 nginx -t 再平滑 reload，接口与私密图片的缓存策略不变。

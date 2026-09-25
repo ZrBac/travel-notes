@@ -5,9 +5,9 @@ const TravelEditor=(()=>{
  function assets(){
   if(loading)return loading;
   loading=Promise.all([new Promise((resolve,reject)=>{
-   const link=document.createElement('link');link.rel='stylesheet';link.href=vendor+'jodit.min.css';link.onload=resolve;link.onerror=()=>reject(Error('编辑器样式加载失败'));document.head.append(link);
+   const link=document.createElement('link');link.rel='stylesheet';link.href=vendor+'jodit.min.css?v=959c9a0d5c2a119d';link.onload=resolve;link.onerror=()=>reject(Error('编辑器样式加载失败'));document.head.append(link);
   }),new Promise((resolve,reject)=>{
-   const script=document.createElement('script');script.src=vendor+'jodit.min.js';script.onload=resolve;script.onerror=()=>reject(Error('编辑器加载失败'));document.head.append(script);
+   const script=document.createElement('script');script.src=vendor+'jodit.min.js?v=ffc7df4c46b64365';script.onload=resolve;script.onerror=()=>reject(Error('编辑器加载失败'));document.head.append(script);
   })]).catch(error=>{loading=null;throw error;});return loading;
  }
  function owns(ctx){return current===ctx&&ctx.textarea.isConnected;}
