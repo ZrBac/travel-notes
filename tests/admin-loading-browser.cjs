@@ -9,7 +9,8 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   const context=await b.newContext({viewport:{width,height:900}}),p=await context.newPage();
   let siteDelay=0,mediaDelay=0,taxDelay=0,taxPending=false,guidesParallel=false,detailCalls=0,mediaCalls=0,taxCalls=0;const errors=[],writes=[];
   p.on('pageerror',e=>errors.push(e.message));
-  await p.addInitScript(()=>{
+  await p.addInitScript(legacy=>{
+   if(legacy){window.structuredClone=undefined;window.BroadcastChannel=undefined;}
    const now=Date.now;window.clockOffset=0;Date.now=()=>now()+window.clockOffset;
    const timer=window.setTimeout;window.setTimeout=(fn,ms,...args)=>timer(fn,ms===15000?1200:ms,...args);
    const fetch=window.fetch;window.abortedReads=[];
@@ -18,7 +19,7 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     if(window.slowBody&&String(url)==='/api/site')return Promise.resolve({ok:true,status:200,json:()=>new Promise((resolve,reject)=>{options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true});})});
     return fetch(url,options);
    };
-  });
+  },process.env.LEGACY_BROWSER==='1');
   await context.route('**/*',async r=>{
    const u=new URL(r.request().url());assert.equal(u.origin,'http://admin.test');
    if(u.pathname.startsWith('/api/')){

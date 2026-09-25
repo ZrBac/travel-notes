@@ -35,6 +35,8 @@ async function requestAPI(path,options={},prefetch=false){
   }finally{if(prefetch)adminPrefetches.delete(controller);clearTimeout(timer);for(const signal of signals)signal.removeEventListener('abort',abort);}
 }
 // A short-lived, bounded cache in this tab only. Never persist sessions, editor bodies or task results to browser storage.
+// Cached values come from JSON APIs; Safari before 15.4 lacks structuredClone.
+function cloneAdminData(value){return typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));}
 const adminDataCache=new Map(),adminPrefetches=new Set();let adminDataEpoch=0;
 const adminEvents=typeof BroadcastChannel==='function'?new BroadcastChannel('travel-admin-events'):null;
 function clearAdminData(broadcast=false){adminDataEpoch++;adminDataCache.clear();if(broadcast)adminEvents?.postMessage('invalidate');}
@@ -50,17 +52,17 @@ async function api(path,options={}){
   if(!state.user||!cacheableAdminPath(path))return requestAPI(path,requestOptions);
   const now=Date.now();let entry=adminDataCache.get(path);
   if(entry){
-    if(entry.value&&entry.expires>now)return structuredClone(entry.value);
-    if(entry.pending&&(!entry.guard||!entry.guard.aborted))return structuredClone(await entry.pending);
+    if(entry.value&&entry.expires>now)return cloneAdminData(entry.value);
+    if(entry.pending&&(!entry.guard||!entry.guard.aborted))return cloneAdminData(await entry.pending);
   }
   for(const [key,value] of adminDataCache)if(value.expires<=now&&!value.pending)adminDataCache.delete(key);
   if(adminDataCache.size>=12)adminDataCache.delete(adminDataCache.keys().next().value);
   const epoch=adminDataEpoch;entry={prefetch,guard:prefetch?null:adminReads.signal,pending:null,value:null,expires:0};
   entry.pending=requestAPI(path,requestOptions,prefetch).then(data=>{
-    if(epoch===adminDataEpoch&&adminDataCache.get(path)===entry){entry.value=structuredClone(data);entry.expires=Date.now()+30000;}
+    if(epoch===adminDataEpoch&&adminDataCache.get(path)===entry){entry.value=cloneAdminData(data);entry.expires=Date.now()+30000;}
     return data;
   }).finally(()=>{entry.pending=null;if(!entry.value&&adminDataCache.get(path)===entry)adminDataCache.delete(path);});
-  adminDataCache.set(path,entry);return structuredClone(await entry.pending);
+  adminDataCache.set(path,entry);return cloneAdminData(await entry.pending);
 }
 adminEvents?.addEventListener('message',()=>clearAdminData());
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearAdminData();stopAdminPrefetch();}});

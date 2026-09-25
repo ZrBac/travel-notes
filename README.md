@@ -227,3 +227,6 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 
 
 手机后台常用页签：900px 及以下底部固定「攻略管理、旅行足迹、图片素材、旅游助手」，沿用现有 hash 路由及未保存确认、上传／保存中的切页保护。攻略编辑／导入／回收站归属攻略页签，足迹编辑／回收站归属足迹页签，其他功能仍通过顶部菜单进入。底部保存栏和提示信息抬到页签上方，预留安全区域；登录页、桌面、软键盘压缩可视区及专注编辑时不显示底部页签。`tests/admin-mobile-browser.cjs` 同时覆盖四页签导航、选中状态、取消离开时保留输入、保存栏不重叠和登录／桌面隐藏。
+
+
+旧版 Safari 的后台缓存兼容：缓存数据仅来自 JSON 接口。`cloneAdminData` 在支持时使用原生 `structuredClone`，缺少该 API 时通过 JSON 深拷贝保留列表之间的独立副本；不改变缓存有效期、写入失效、会话检查或私密内容边界。回归命令 `LEGACY_BROWSER=1 node tests/admin-loading-browser.cjs` 禁用 structuredClone 和 BroadcastChannel，验证页面可用、缓存不被调用方修改、超时重试、切页取消及退出清理；同一套测试同时覆盖现代浏览器。
