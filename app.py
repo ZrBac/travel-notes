@@ -219,6 +219,15 @@ def admin_accounts():
     return jsonify(accounts=rows)
 
 
+def locked_admin_account():
+    # Serialize account changes before row locks so mutual removals cannot race.
+    db().execute("SELECT pg_advisory_xact_lock(hashtextextended('admin-account-changes',0))")
+    account=db().execute('SELECT * FROM admins WHERE id=%s FOR UPDATE',(user()['id'],)).fetchone()
+    if not account or account['session_version']!=session.get('version'):
+        abort(401,description='登录信息已更新，请重新登录')
+    return account
+
+
 @app.post('/api/admin/accounts')
 def create_admin_account():
     data=payload();username=data.get('username','');name=data.get('display_name','')
@@ -229,8 +238,7 @@ def create_admin_account():
     if not isinstance(password,str) or not 8<=len(password)<=256:abort(400,description='密码需要 8～256 个字符')
     if password!=data.get('confirm_password'):abort(400,description='两次新密码不一致')
     if not isinstance(current,str) or not 1<=len(current)<=256:abort(400,description='请填写当前管理员的密码')
-    account=db().execute('SELECT * FROM admins WHERE id=%s FOR UPDATE',(user()['id'],)).fetchone()
-    if account['session_version']!=session.get('version'):abort(401,description='登录信息已更新，请重新登录')
+    account=locked_admin_account()
     if not check_password_hash(account['password_hash'],current):abort(400,description='当前管理员密码不正确')
     username=username.strip()
     if db().execute('SELECT id FROM admins WHERE username=%s',(username,)).fetchone():abort(409,description='这个登录账号已存在，不会覆盖原账号')
@@ -240,12 +248,31 @@ def create_admin_account():
     return jsonify(account=created),201
 
 
+@app.delete('/api/admin/accounts/<int:account_id>')
+def delete_admin_account(account_id):
+    current=payload().get('current_password','')
+    if not isinstance(current,str) or not 1<=len(current)<=256:
+        abort(400,description='请填写当前管理员的密码')
+    account=locked_admin_account()
+    if not check_password_hash(account['password_hash'],current):
+        abort(400,description='当前管理员密码不正确')
+    if account_id==account['id']:
+        abort(400,description='不能移除当前登录账号，请使用其他管理员账号操作')
+    target=db().execute('SELECT id,username FROM admins WHERE id=%s FOR UPDATE',(account_id,)).fetchone()
+    if not target:abort(404,description='这个管理员账号已不存在，请刷新列表')
+    if db().execute('SELECT count(*) AS n FROM admins').fetchone()['n']<=1:
+        abort(409,description='至少需要保留一个管理员')
+    db().execute('DELETE FROM admins WHERE id=%s',(account_id,))
+    audit('account.delete',account_id,{'username':target['username']})
+    db().commit()
+    return jsonify(ok=True)
+
+
 @app.put('/api/admin/account')
 def update_account():
     data=payload();current=data.get('current_password','');new=data.get('new_password','');name=data.get('display_name',user()['display_name'])
     if not isinstance(current,str) or len(current)>256 or not isinstance(new,str) or not isinstance(name,str) or not 1<=len(name.strip())<=40: abort(400,description='账号信息格式不正确')
-    account=db().execute('SELECT * FROM admins WHERE id=%s FOR UPDATE',(user()['id'],)).fetchone()
-    if account['session_version']!=session.get('version'): abort(401,description='登录信息已更新，请重新登录')
+    account=locked_admin_account()
     if not check_password_hash(account['password_hash'],current): abort(400,description='当前密码不正确')
     username=data.get('username',account['username'])
     if not isinstance(username,str) or not re.fullmatch(r'[A-Za-z0-9_]{3,32}',username.strip()): abort(400,description='登录账号需要 3～32 位字母、数字或下划线')
