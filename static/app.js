@@ -80,13 +80,13 @@ function updateShell(view='home') {
   $('#site-more summary span').textContent=installed?'浏览':'更多';
   $('#site-more summary').setAttribute('aria-label',installed?'更多浏览方式':'更多功能');
   $('#more-autumn').hidden=!autumnGuides().length;
-  $('#site-more').classList.toggle('has-current',(['destinations','tags','autumn'].includes(navView)||!installed&&navView==='offline'));
+  $('#site-more').classList.toggle('has-current',(['destinations','tags','autumn','split'].includes(navView)||!installed&&navView==='offline'));
   for(const link of document.querySelectorAll('#site-more a[href]')){if(link.hash==='#'+navView)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
   $('#navigation').innerHTML=entries.map(([key,ico,label])=>`<a class="nav-item ${navView===key?'active':''}" href="#${key}" ${navView===key?'aria-current="page"':''}>${icon(ico)}<span>${label}</span>${key==='guides'?`<span class="nav-count">${state.guides.length}</span>`:''}</a>`).join('');
   const mobile=entries;
   $('#mobile-navigation').style.setProperty('--nav-columns',String(mobile.length));
   $('#mobile-navigation').innerHTML=mobile.map(([key,ico,label])=>`<a href="#${key}" ${navView===key?'aria-current="page"':''}>${icon(ico)}<span>${label}</span></a>`).join('');
-  $('#breadcrumb').textContent=({offline:'已保存攻略',home:'旅行首页',guides:'旅行攻略',footprints:'旅行足迹',record:'足迹详情',autumn:'秋游七地对比',destinations:'目的地',tags:'灵感标签',trash:'回收站',guide:'攻略详情',edit:'编辑攻略',new:'新建攻略'})[view]||'攻略收藏';
+  $('#breadcrumb').textContent=({split:'费用分摊',offline:'已保存攻略',home:'旅行首页',guides:'旅行攻略',footprints:'旅行足迹',record:'足迹详情',autumn:'秋游七地对比',destinations:'目的地',tags:'灵感标签',trash:'回收站',guide:'攻略详情',edit:'编辑攻略',new:'新建攻略'})[view]||'攻略收藏';
 }
 function heading(title, description, eyebrow='旅行收藏') {
   return `<section class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></section>`;
@@ -203,7 +203,7 @@ document.addEventListener('click',async event=>{
 $('#login-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=$('button[type=submit]',form);button.disabled=true;$('#login-error').textContent='';try{const data=await api('/login',{method:'POST',body:Object.fromEntries(new FormData(form))});state.admin=true;state.csrf=data.csrf;form.password.value='';$('#login-dialog').close();await loadGuides();toast('欢迎回来，继续记录旅程吧');const callback=state.afterLogin;state.afterLogin=null;await route();if(callback)callback();}catch(error){$('#login-error').textContent=error.message;}finally{button.disabled=false;}});
 async function route(){
   let hash=location.hash.slice(1)||'home';
-  if(!adminPreview&&!navigator.onLine&&!hash.startsWith('offline')){
+  if(!adminPreview&&!navigator.onLine&&!hash.startsWith('offline')&&hash!=='split'){
     const guideId=hash.match(/^guide\/(\d+)/)?.[1];let hasSaved=false;try{hasSaved=guideId&&await TravelPWA.has(guideId);}catch{}
     hash=hasSaved?'offline/'+guideId:'offline';history.replaceState(null,'','#'+hash);
   }
@@ -212,7 +212,7 @@ async function route(){
   cancelPublicReads();PublicImages.pause();TravelPWA.release();state.route=hash;const generation=++state.load;const [view,id]=hash.split('/');document.title=(state.site?.site_name||'行笺')+' · 攻略与旅行足迹';
   if(['guide','edit','record'].includes(view)&&!/^\d+$/.test(id||'')){location.hash='home';return;}
   const app=$('#app'),previous=app.firstChild;app.inert=true;app.setAttribute('aria-busy','true');const loading=setTimeout(()=>{if(state.load===generation&&app.firstChild===previous)app.innerHTML='<div class="loading">正在整理你的旅行灵感…</div>';},120);
-  try{if(view==='offline'){if(id&&/^\d+$/.test(id))await detail(id,generation,true);else await TravelPWA.list(generation);}else if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='tags')tags();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#offline">查看已保存攻略</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
+  try{if(view==='split')TravelSplit.mount();else if(view==='offline'){if(id&&/^\d+$/.test(id))await detail(id,generation,true);else await TravelPWA.list(generation);}else if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='tags')tags();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#offline">查看已保存攻略</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
 }
 const moreMenu=$('#site-more');
 // Installation can change without a page reload; keep the current content intact.
@@ -228,7 +228,9 @@ document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&e
 async function init(){
   TravelPWA.start();
   $('#today').textContent=new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
-  try{const bootstrap=await api('/bootstrap');state.bootstrapOffline=false;state.site=bootstrap.site;const brand=$('.brand>span:last-child');brand.innerHTML=esc(state.site.site_name)+'<small>旅行攻略 · 旅途手记</small>';$('.footer>span:first-child').textContent=state.site.site_name+' · '+state.site.footer;$('meta[name=description]').content=state.site.tagline;const session=bootstrap.session;state.admin=session.authenticated;state.csrf=session.csrf;state.guides=bootstrap.guides;state.records=bootstrap.records||[];state.recordCount=bootstrap.record_count||0;Footprints.seed(bootstrap.record_page);await route();if(location.pathname==='/admin'&&!state.admin)openLogin();}catch(error){
+  if(location.hash==='#split'){state.site=state.site||{site_name:'行笺'};await route();}
+  try{const bootstrap=await api('/bootstrap');state.bootstrapOffline=false;state.site=bootstrap.site;const brand=$('.brand>span:last-child');brand.innerHTML=esc(state.site.site_name)+'<small>旅行攻略 · 旅途手记</small>';$('.footer>span:first-child').textContent=state.site.site_name+' · '+state.site.footer;$('meta[name=description]').content=state.site.tagline;const session=bootstrap.session;state.admin=session.authenticated;state.csrf=session.csrf;state.guides=bootstrap.guides;state.records=bootstrap.records||[];state.recordCount=bootstrap.record_count||0;Footprints.seed(bootstrap.record_page);if(location.hash==='#split'&&$('#split-form'))updateShell('split');else await route();if(location.pathname==='/admin'&&!state.admin)openLogin();}catch(error){
+    if(location.hash==='#split'){state.bootstrapOffline=true;return;}
     if(!adminPreview&&TravelPWA.supported){
       state.bootstrapOffline=true;state.admin=false;state.csrf='';state.guides=[];state.records=[];state.site={site_name:'行笺'};
       const id=location.hash.match(/^#guide\/(\d+)/)?.[1];let saved=false;try{saved=id&&await TravelPWA.has(id);}catch{}

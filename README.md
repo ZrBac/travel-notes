@@ -233,3 +233,6 @@ export TRAVEL_TEST_DATABASE_URL='dbname=travelnotes_test user=travelnotes host=/
 
 
 JavaScript 传输压缩：Nginx 的 gzip_types 同时包含 text/javascript 与 application/javascript，避免静态文件使用前一种 MIME 时漏掉压缩。编辑器 Jodit 的 JS/CSS 地址带各自内容 SHA256 前 16 位版本号，复用既有不可变静态缓存规则；更换编辑器文件时同步更新版本号。配置发布须先 nginx -t 再平滑 reload，接口与私密图片的缓存策略不变。
+
+
+费用分摊工具：前台「更多 → 费用分摊」（`/#split`），默认 9 人、其中 6 人各 1,500 元额度。成员、金额及费用仅存当前浏览器的 `travel-expense-split-v1` localStorage，不上传、不跨设备同步；支持导出完整文本报告。费用支持按人/合计单价、次数/晚数、预计/上限、可报销标记及参与成员。单笔只有部分符合报销条件时需拆项。报销额为总额度、对应场景可报销费用、填写的预计/保守到账金额三者最小值，款项全体均享、单人抵扣不超自身费用，余额再分配；整数分计算并按成员顺序分配尾差。结果展示预计、预算上限＋保守报销、预算上限＋零报销三种情景，不代表无限风险的支出保证，也未扣除个人垫付款。直接进入计算页先渲染，不等待 bootstrap，已有 PWA 公共静态缓存支持离线冷启动。验证：`node tests/travel-split-math.cjs`、`node tests/travel-split-browser.cjs`、`node tests/pwa-browser.cjs`。
