@@ -12,12 +12,12 @@ const TravelAgent = (()=>{
     const data=await api('/admin/agent');if(gen!==state.generation||token!==generation)return;
     service=data.service;working=data.tasks.some(t=>active(t.status));tasks=data.tasks;nextBefore=data.next_before;
     $('#main').innerHTML=heading('网站管家','把需求交给管家，随时回来查看处理结果。')+`
-      <section class="panel agent-overview" id="agent-overview"></section>
+      <div class="assistant-status" id="agent-overview"></div>
       <div class="agent-layout"><section class="panel agent-compose"><h2>安排一个任务</h2>
         <form id="agent-task-form"><label>任务类型<select name="kind"><option value="change">功能建设 · 修改开发副本</option><option value="diagnose">故障诊断 · 只读检查</option><option value="chat">咨询 · 只读讨论</option></select></label>
-        <label>需求<textarea name="prompt" required minlength="2" maxlength="6000" rows="7" placeholder="例如：给旅行足迹增加按目的地筛选；或者检查最近网站是否运行正常。"></textarea></label>
-        <p class="help" id="agent-followup-note">网站管家一次处理一个任务，可与旅游助手同时运行；关闭页面后继续。改动测试通过后，由你查看并发布。</p>
-        <div class="actions"><button type="submit" class="button primary">提交任务</button><button type="button" class="button" data-agent="new">新建对话</button></div>
+        <label>需求<textarea name="prompt" required minlength="2" maxlength="6000" rows="4" placeholder="例如：给旅行足迹增加按目的地筛选；或者检查最近网站是否运行正常。"></textarea></label>
+        <p class="help" id="agent-followup-note">关闭页面后继续处理；修改完成后，查看测试结果再发布。</p>
+        <div class="actions"><button type="submit" class="button primary">提交任务</button><button type="button" class="button" data-agent="new" hidden>结束续聊</button></div>
         <p class="form-error" id="agent-form-error" role="alert"></p></form>
         <details class="agent-rollback"><summary>发布记录与回退</summary><p class="help">回退网站代码，保留攻略、足迹及上传文件。涉及数据库结构的旧版本需单独处理。</p><div id="agent-versions"></div></details>
       </section><section class="panel agent-task-panel"><div class="panel-top"><h2>任务记录</h2><button class="button small" type="button" data-agent="refresh">刷新</button></div>${TaskManager.bar('agent')}<div id="agent-tasks"></div><button class="button small" type="button" id="agent-older" data-agent="older" hidden>加载更早的记录</button></section></div>
@@ -26,17 +26,20 @@ const TravelAgent = (()=>{
   }
   function renderOverview(){
     const health=service.health||{};
-    $('#agent-overview').innerHTML=`<div><span class="agent-dot ${service.online?'online':''}"></span><strong>${service.online?'管家在线':'管家暂未连接'}</strong><span>${service.authenticated?'ChatGPT 账号已连接':'账号需要重新登录'}</span><span class="help">${esc(assistantExecution(service.execution))}</span></div><div><span>最近巡检：${health.checked_at?date(health.checked_at*1000):'等待巡检'}</span><span>磁盘可用：${service.disk_free?(service.disk_free/1024**3).toFixed(1)+' GB':'—'}</span></div>${(health.warnings||[]).map(w=>`<p class="form-error">${esc(w)}</p>`).join('')}`;
+    const node=$('#agent-overview'),opened=node.querySelector('details')?.open;
+    node.innerHTML=`<span><span class="agent-dot ${service.online&&service.authenticated?'online':''}"></span>${!service.online?'管家暂未连接':service.authenticated?'管家可用':'账号需要重新登录'}</span><details class="assistant-runtime" ${opened?'open':''}><summary>运行信息</summary><p>${esc(assistantExecution(service.execution))}</p><p>最近巡检：${health.checked_at?date(health.checked_at*1000):'等待巡检'} · 磁盘可用：${service.disk_free?(service.disk_free/1024**3).toFixed(1)+' GB':'—'}</p><p>可与旅游助手同时运行，关闭页面后任务继续。</p></details>${(health.warnings||[]).map(w=>`<p class="form-error">${esc(w)}</p>`).join('')}`;
     $('#agent-versions').innerHTML=(service.versions||[]).map(v=>`<div class="agent-version"><code>${esc(v)}</code><button type="button" class="button small" data-agent="rollback" data-version="${esc(v)}">回退</button></div>`).join('')||'<p class="muted">暂无代码检查点。</p>';
   }
   function renderTasks(){
+    $('.agent-task-panel').hidden=!tasks.length;
+    $('[data-agent=new]').hidden=!$('#agent-task-form').dataset.parent;
     $('#agent-tasks').innerHTML=tasks.length?tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${selected===t.id?'selected':''}" data-agent="select" data-id="${t.id}"><span><strong>${esc(t.prompt.slice(0,70))}</strong><small>${kinds[t.kind]} · ${date(t.created_at)}</small></span><span class="agent-state ${t.status}">${esc(statusLabel(t))}</span></button>`,'agent',checked)).join(''):'<p class="muted">还没有任务，从左侧提交第一个需求。</p>';
     $('#agent-tasks').dataset.signature=JSON.stringify(tasks);TaskManager.update('agent',tasks,checked);$('#agent-older').hidden=!nextBefore;
   }
   function renderDetail(task){
     const r=task.report||{};$('#agent-detail').hidden=false;
     $('#agent-detail').innerHTML=`<div class="panel-top"><h2>任务 #${task.id} · ${esc(statusLabel(task))}</h2><div class="actions">${['queued','running','testing'].includes(task.status)?`<button type="button" class="button small" data-agent="cancel" data-id="${task.id}">停止任务</button>`:''}${!active(task.status)?`<button type="button" class="button small danger" data-agent="delete" data-id="${task.id}">删除记录</button>`:''}${!active(task.status)&&['change','diagnose','chat'].includes(task.kind)?`<button type="button" class="button small" data-agent="followup" data-id="${task.id}" data-kind="${task.kind}">继续补充需求</button>`:''}</div></div>
-      ${r.execution?`<p class="help">执行模型：${esc(assistantExecution(r.execution))}</p>`:''}${r.code_start?`<p class="help">${esc(r.code_start)}</p>`:''}${r.repair_attempt?`<p class="help">已启动自动修复 ${Number(r.repair_attempt)} / 1 次；任务总时限仍为 20 分钟。</p>`:''}
+      ${r.execution?`<details class="assistant-runtime"><summary>执行信息</summary><p class="help">${esc(assistantExecution(r.execution))}</p></details>`:''}${r.code_start?`<p class="help">${esc(r.code_start)}</p>`:''}${r.repair_attempt?`<p class="help">已启动自动修复 ${Number(r.repair_attempt)} / 1 次；任务总时限仍为 20 分钟。</p>`:''}
       <p class="agent-request">${esc(task.prompt)}</p><div class="agent-answer">${esc(task.result||'任务已保存，等待处理。')}</div>
       ${r.progress?.length?`<details ${active(task.status)?'open':''}><summary>执行进度</summary><pre>${esc(r.progress.join('\n'))}</pre></details>`:''}
       ${r.files?.length?`<h3>变更预览</h3><ul class="agent-files">${r.files.map(f=>`<li><span>${esc(f.action)}</span><code>${esc(f.path)}</code>${f.automatic?'':f.reviewable?'<small>确认后发布</small>':'<small>需单独迁移</small>'}</li>`).join('')}</ul><details><summary>查看代码差异${r.diff_truncated?'（内容较长，已截取）':''}</summary><pre>${esc(r.diff||'没有文本差异')}</pre></details>`:''}
@@ -87,7 +90,7 @@ const TravelAgent = (()=>{
     $('#agent-task-form').addEventListener('submit',async e=>{
       e.preventDefault();e.stopImmediatePropagation();if(busy)return;const form=e.target;if(!form.reportValidity())return;
       busy=true;const submit=$('button[type=submit]',form);submit.disabled=true;$('#agent-form-error').textContent='';
-      try{const data=Object.fromEntries(new FormData(form));if(form.dataset.parent)data.parent_id=Number(form.dataset.parent);const result=await api('/admin/agent/tasks',{method:'POST',body:data});selected=result.id;form.prompt.value='';delete form.dataset.parent;$('#agent-followup-note').textContent='任务已提交，关闭页面后仍会继续。';toast('任务已提交');}
+      try{const data=Object.fromEntries(new FormData(form));if(form.dataset.parent)data.parent_id=Number(form.dataset.parent);const result=await api('/admin/agent/tasks',{method:'POST',body:data});selected=result.id;form.prompt.value='';delete form.dataset.parent;$('[data-agent=new]').hidden=true;$('#agent-followup-note').textContent='任务已提交，关闭页面后仍会继续。';toast('任务已提交');}
       catch(e){$('#agent-form-error').textContent=e.message;}finally{busy=false;submit.disabled=false;await refresh().catch(()=>{});schedule(generation);}
     });
     $('#main').addEventListener('click',handle);
@@ -99,8 +102,8 @@ const TravelAgent = (()=>{
       if(action==='older'){if(!nextBefore)return;const token=generation,version=revision;const data=await api('/admin/agent?before='+nextBefore);if(token!==generation||version!==revision||busy)return;tasks=[...new Map([...tasks,...data.tasks].map(t=>[t.id,t])).values()].sort((a,b)=>b.id-a.id);nextBefore=data.next_before;expanded=true;renderTasks();}
       if(action==='select'){selected=Number(node.dataset.id);$('#agent-detail').dataset.updated='';renderTasks();await loadSelected();$('#agent-detail').scrollIntoView({behavior:'smooth',block:'start'});}
       if(action==='refresh'){await refresh();schedule(generation);}
-      if(action==='followup'){const form=$('#agent-task-form');form.dataset.parent=node.dataset.id;form.kind.value=node.dataset.kind;$('#agent-followup-note').textContent='继续任务 #'+node.dataset.id+'；会带上历史需求、实际测试错误及可用候选；正式代码更新后会从最新版继续。';form.prompt.focus();}
-      if(action==='new'){delete $('#agent-task-form').dataset.parent;$('#agent-followup-note').textContent='网站管家一次处理一个任务，可与旅游助手同时运行；关闭页面后继续。';$('#agent-task-form').prompt.focus();}
+      if(action==='followup'){const form=$('#agent-task-form');form.dataset.parent=node.dataset.id;form.kind.value=node.dataset.kind;$('[data-agent=new]').hidden=false;$('#agent-followup-note').textContent='继续任务 #'+node.dataset.id+'；会带上历史需求、实际测试错误及可用候选；正式代码更新后会从最新版继续。';form.prompt.focus();}
+      if(action==='new'){delete $('#agent-task-form').dataset.parent;$('[data-agent=new]').hidden=true;$('#agent-followup-note').textContent='网站管家一次处理一个任务，可与旅游助手同时运行；关闭页面后继续。';$('#agent-task-form').prompt.focus();}
       if(action==='delete'||action==='delete-selected'){
         const ids=action==='delete'?[Number(node.dataset.id)]:[...checked];if(!ids.length)return;
         const token=generation;revision++;busy=true;

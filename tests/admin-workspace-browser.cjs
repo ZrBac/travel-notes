@@ -47,10 +47,11 @@ const overview={trip,counts:{total:4,private:3,draft:1,trash:0},records:{total:2
   const go=async hash=>{const encoded=await p.evaluate(h=>{location.hash=h;return location.hash.slice(1);},hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert,encoded);await p.waitForFunction(()=>!TravelEditor.busy);await p.evaluate(()=>new Promise(requestAnimationFrame));};
   const fits=async route=>assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow: '+route+' / '+width);
   const snap=async name=>{if([390,1440].includes(width)){await p.evaluate(()=>scrollTo(0,0));await p.waitForTimeout(150);await p.screenshot({path:out+'/'+name+'-'+width+'.png',fullPage:true});}};
-  await p.goto('http://workspace.test/admin#dashboard');await p.waitForSelector('.workspace-start');
-  assert.ok((await p.locator('.journey-hero').innerText()).includes('今天是第 1 天'));assert.equal(await p.locator('.journey-readiness progress').getAttribute('value'),'3');
-  assert.equal(calls.filter(path=>path==='/api/admin/overview').length,1,'one overview request renders the whole dashboard');
-  await fits('dashboard');await snap('dashboard');
+  await p.goto('http://workspace.test/admin');await p.waitForSelector('.trip-focus');
+  assert.ok((await p.locator('.trip-focus').innerText()).includes('今天是第 1 天'));assert.equal(await p.locator('.trip-card').count(),0,'the focused trip is not repeated in the list');
+  assert.equal(calls.filter(path=>path==='/api/admin/overview').length,0,'the home page no longer loads the redundant dashboard');assert.equal(calls.filter(path=>path==='/api/admin/trips').length,1);
+  assert.equal(await p.locator('#navigation>[aria-label="常用功能"] a').count(),5);assert.equal(await p.locator('#navigation [href="#dashboard"]').count(),0);
+  await fits('home');await snap('home');
   const mobile=width<=900;
   if(mobile){
    assert.deepEqual(await p.locator('#admin-mobile-tabs a').allInnerTexts(),['旅行','攻略','足迹','素材','助手']);
@@ -62,22 +63,25 @@ const overview={trip,counts:{total:4,private:3,draft:1,trash:0},records:{total:2
    await snap('navigation');await p.keyboard.press('Escape');assert.equal(await p.locator('#admin-menu-toggle').getAttribute('aria-expanded'),'false');assert.equal(await p.locator('.workspace').evaluate(n=>n.inert),false);assert.equal(await p.evaluate(()=>document.activeElement.id),'admin-menu-toggle');
    await p.locator('#admin-menu-toggle').click();await p.locator('.admin-menu-backdrop').click({position:{x:width-2,y:200}});assert.equal(await p.locator('#navigation').isVisible(),false);
    if(width===390){await p.locator('#admin-menu-toggle').click();await p.setViewportSize({width:1024,height:900});await p.waitForFunction(()=>!document.querySelector('.sidebar').inert&&!document.querySelector('.workspace').inert);assert.equal(await p.locator('#navigation').isVisible(),true);await p.setViewportSize({width,height:900});await p.waitForFunction(()=>document.querySelector('.sidebar').inert);assert.equal(await p.locator('#navigation').isVisible(),false);}
-   await p.locator('#admin-menu-toggle').click();await p.locator('#navigation [href="#trips"]').click();await p.waitForSelector('.trip-card');assert.equal(await p.locator('#navigation').isVisible(),false);
+   await p.locator('#admin-menu-toggle').click();await p.locator('#navigation [href="#trips"]').click();await p.waitForSelector('.trip-focus');assert.equal(await p.locator('#navigation').isVisible(),false);
   }else{
    assert.equal(await p.locator('#admin-mobile-tabs').isVisible(),false);assert.equal(await p.locator('#admin-menu-toggle').isVisible(),false);
-   assert.equal(await p.locator('.nav-system').getAttribute('open'),null);assert.equal(await p.locator('#navigation [aria-current=page]').getAttribute('href'),'#dashboard');
+   assert.equal(await p.locator('.nav-system').getAttribute('open'),null);assert.equal(await p.locator('#navigation [aria-current=page]').getAttribute('href'),'#trips');
   }
   for(const route of ['trips','trip/1/prepare','trip/1/today','trip/1/plan','trips?q=南京&state=active','trip-new','guides','trash','records','record-trash','media','taxonomy','travel-agent','agent','settings','data','audit','account','new','edit/1','record-new','record-edit/1','import']){
    await go(route);await fits(route);assert.equal(await p.locator('#main .initial-loading').count(),0);assert.equal(await p.locator('#main h1').count(),1,'clear page heading '+route);
    if(mobile&&route.startsWith('trips')){await p.waitForFunction(()=>document.querySelector('#admin-mobile-tabs [aria-current=page]')?.hash==='#trips');}
+   if(route==='guides'){const menu=p.locator('.page-heading .admin-more');assert.equal(await menu.getAttribute('open'),null);await menu.locator('summary').click();assert.equal(await menu.locator('[href="#import"]').isVisible(),true);assert.equal(await menu.locator('[href="#new"]').isVisible(),true);await p.keyboard.press('Escape');assert.equal(await menu.getAttribute('open'),null);}
+   if(route==='travel-agent'){assert.equal(await p.locator('#planner-detail').isVisible(),false);assert.equal(await p.locator('#planner-selection').isVisible(),false);assert.equal(await p.locator('.planner-intro').count(),0);assert.equal(await p.locator('#planner-family-settings').getAttribute('open'),null);await p.locator('#planner-service summary').click();assert.ok((await p.locator('#planner-service').innerText()).includes('未回传实际模型'));}
+   if(route==='agent'){assert.equal(await p.locator('#agent-selection').isVisible(),false);assert.equal(await p.locator('#agent-overview').evaluate(n=>n.classList.contains('panel')),false);}
    if(route==='media')assert.ok(await p.locator('.media-body .button').evaluateAll(ns=>ns.every(n=>n.scrollWidth<=n.clientWidth+1)),'media action labels fit '+width);
    if(['guides','records','media','travel-agent','agent','settings','account','edit/1','trip/1/today'].includes(route))await snap(route.replaceAll('/','-'));
    if(route==='account'&&!mobile)assert.ok(await p.locator('.nav-system').getAttribute('open')!==null,'settings group expands on its own page');
    if(route==='edit/1')await p.waitForFunction(()=>!TravelEditor.busy);
   }
-  await go('dashboard');const empty=await p.evaluate(()=>AdminWorkspace.dashboard({...{counts:{total:0,private:0,draft:0,trash:0},records:{total:0,public:0},media:{count:0,bytes:0},recent:[],backup:null},trip:null}));
-  await p.locator('#main').evaluate((n,html)=>n.innerHTML=html,empty);await fits('empty dashboard');await snap('dashboard-empty');assert.equal(await p.locator('.journey-hero [href="#travel-agent"]').count(),1);
+  await go('dashboard');assert.equal(await p.locator('#main h1').innerText(),'我的旅行','old bookmarks use the merged page');
+  await ctx.route('**/api/admin/trips?*',route=>route.fulfill({json:{trips:[],focus:null,total:0,page:1,pages:1}}));await go('trips');await fits('empty trips');await snap('home-empty');assert.equal(await p.locator('#main [href="#travel-agent"]').count(),1);assert.equal(await p.locator('#trip-filter').count(),0,'an empty site has one clear start instead of filters and repeated placeholders');
   await p.evaluate(()=>{state.user=null;showLogin();});assert.equal(await p.locator('#main').innerText(),'');assert.equal(await p.locator('#admin-mobile-tabs').isVisible(),false);assert.equal(await p.locator('.admin-menu-backdrop').isVisible(),false);await fits('login');await snap('login');
-  assert.deepEqual(errors,[]);await ctx.close();console.log('PASS '+width+': all administration pages, overview/empty state, navigation, drawer focus/Escape/backdrop, five tabs and query selection, logout, no extra API requests');
+  assert.deepEqual(errors,[]);await ctx.close();console.log('PASS '+width+': all administration pages, merged home/empty state, navigation, drawer focus/Escape/backdrop, five tabs and query selection, logout, no extra API requests');
  }
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

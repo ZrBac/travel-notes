@@ -17,14 +17,14 @@ const TravelPlanner = (() => {
   function paceField(){
     return `<label>游玩节奏<select name="pace"><option value="">按本次行程安排</option>${Object.entries(paceNames).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></label>`;
   }
-  function syncDirty(){state.dirty=familyDirty||tripDirty;}
+  function syncDirty(){state.dirty=familyDirty||tripDirty;const form=$('#planner-form');if(form)$('[data-planner=new]').hidden=!tripDirty&&!form.dataset.parent;}
   function freezeForm(form){
     const controls=[...form.elements].map(node=>[node,node.disabled]);form.inert=true;
     for(const [node] of controls)node.disabled=true;
     return ()=>{form.inert=false;for(const [node,disabled] of controls)node.disabled=disabled;};
   }
   function familyPanel(){
-    return `<section class="panel planner-family"><details id="planner-family-settings"><summary>家庭出游偏好 <span id="planner-family-badge"></span></summary><p class="help">按当前管理员账号保存在服务器，换手机也能读取。新旅行自动带入，本次修改不会改变保存的偏好。</p><form id="planner-family-form"><div class="planner-fields">${input('origin','常用出发地','如上海','maxlength="80"')}${input('people','常用出行人数','不固定可留空','type="number" min="1" max="50"')}${input('rooms','住宿偏好','如少换酒店，优先双床房','maxlength="120"')}${input('budget','常用预算','注明人均或合计、是否含大交通','maxlength="120"')}</div><details class="planner-more"><summary>同行情况、节奏和兴趣</summary><label>常用同行情况<textarea name="companions" rows="2" maxlength="300" placeholder="如两位成人，或带老人/孩子；不固定可留空"></textarea></label><div class="planner-fields">${paceField()}${input('walking','步行 / 体力要求','如少爬台阶，连续步行不超过半小时','maxlength="120"')}${input('transport','交通偏好','如公共交通为主，远郊可包车','maxlength="120"')}${input('food','饮食口味 / 忌口','如少辣、不吃海鲜；没有可留空','maxlength="300"')}</div><label>兴趣偏好<textarea name="preferences" rows="2" maxlength="1500" placeholder="人文街区、美食、博物馆、自然风景……"></textarea></label>${input('excluded','不考虑的目的地','多个目的地用逗号分隔','maxlength="500"')}</details><div class="actions"><button class="button primary small" type="submit">保存家庭偏好</button><button class="button small" type="button" data-planner="apply-family">带入本次规划</button></div><p id="planner-family-status" class="help" role="status"></p><p id="planner-family-error" class="form-error" role="alert"></p></form></details></section>`;
+    return `<div class="planner-family"><details id="planner-family-settings"><summary>家庭出游偏好 <span id="planner-family-badge"></span></summary><p class="help">按当前管理员账号保存在服务器，换手机也能读取。新规划自动带入，当前修改只用于本次。</p><form id="planner-family-form"><div class="planner-fields">${input('origin','常用出发地','如上海','maxlength="80"')}${input('people','常用出行人数','不固定可留空','type="number" min="1" max="50"')}${input('rooms','住宿偏好','如少换酒店，优先双床房','maxlength="120"')}${input('budget','常用预算','注明人均或合计、是否含大交通','maxlength="120"')}</div><details class="planner-more"><summary>同行情况、节奏和兴趣</summary><label>常用同行情况<textarea name="companions" rows="2" maxlength="300" placeholder="如两位成人，或带老人/孩子；不固定可留空"></textarea></label><div class="planner-fields">${paceField()}${input('walking','步行 / 体力要求','如少爬台阶，连续步行不超过半小时','maxlength="120"')}${input('transport','交通偏好','如公共交通为主，远郊可包车','maxlength="120"')}${input('food','饮食口味 / 忌口','如少辣、不吃海鲜；没有可留空','maxlength="300"')}</div><label>兴趣偏好<textarea name="preferences" rows="2" maxlength="1500" placeholder="人文街区、美食、博物馆、自然风景……"></textarea></label>${input('excluded','不考虑的目的地','多个目的地用逗号分隔','maxlength="500"')}</details><div class="actions"><button class="button primary small" type="submit">保存家庭偏好</button><button class="button small" type="button" data-planner="apply-family">带入本次规划</button></div><p id="planner-family-status" class="help" role="status"></p><p id="planner-family-error" class="form-error" role="alert"></p></form></details></div>`;
   }
   function fillFamily(){
     const form=$('#planner-family-form');if(!form)return;
@@ -56,38 +56,40 @@ const TravelPlanner = (() => {
     stop();const token=epoch;tasks=[];detail=null;expanded=false;selected=/^\d+$/.test(id||'')?Number(id):null;
     const data=await api(endpoint);if(gen!==state.generation||token!==epoch)return;
     tasks=data.tasks;nextBefore=data.next_before;family=data.family_preferences||{preferences:{},updated_at:null};familyDirty=false;tripDirty=false;attached=null;attachedContext=null;
-    $('#main').innerHTML=heading('为自己和家人，安排下一次出发。','记住常用偏好，结合这次日期与同行情况，整理一份图文旅行计划。')+`
-      <section class="panel planner-intro"><div><span class="eyebrow">家庭出游规划</span><h2>规划一份图文攻略</h2><p>行程 · 景点美食 · 住宿预算 · 预约与天气备选</p></div><span id="planner-service" role="status"></span></section>
-      ${familyPanel()}
+    $('#main').innerHTML=heading('旅游助手','填好目的地和日期，生成图文攻略。')+`
+      <div class="assistant-status" id="planner-service" role="status"></div>
       <div class="planner-layout"><section class="panel planner-compose"><div class="panel-top"><h2>这次，想去哪里？</h2><button class="button small" type="button" data-planner="example">填入家庭出游示例</button></div>
       <form id="planner-form">
-        <div class="planner-trip-context"><p id="planner-trip-label" class="help">可关联已安排的旅行，自动带入真实日期、交通住宿和当前路线。</p><div class="actions"><button class="button small" type="button" data-planner="choose-trip">关联已有旅行</button><button class="button small" type="button" data-planner="detach-trip" hidden>取消关联</button></div></div>
+        <div class="planner-trip-context"><div class="actions"><button class="button small" type="button" data-planner="choose-trip">关联已有旅行</button><button class="button small" type="button" data-planner="detach-trip" hidden>取消关联</button></div><p id="planner-trip-label" class="help" hidden></p></div>
 
         <label>规划方式<select name="mode"><option value="itinerary">生成目的地攻略</option><option value="compare">比较几个候选地</option></select></label>
         <div class="planner-fields">${input('destination','目的地 / 候选范围','如南京，或推荐适合秋季家庭出游的三个城市','maxlength="120"')}${input('origin','出发地','未定可留空','maxlength="80"')}
         ${input('dates','出行日期 / 季节','填写具体日期，或先选月份/季节','maxlength="120"')}${input('days','旅行天数','','type="number" min="1" max="30" value="4" required')}
-        ${input('people','出行人数','','type="number" min="1" max="50" value="1" required')}${input('rooms','房间需求','如 1 间双床房，住 3 晚','maxlength="120"')}</div>
-        ${input('budget','预算','请注明人均或总预算、是否含大交通','maxlength="120"')}
-        <details class="planner-more"><summary>本次同行情况与偏好</summary><label>本次同行情况<textarea name="companions" rows="2" maxlength="300" placeholder="按这次出行填写；带老人或孩子时可说明年龄、体力需求"></textarea></label><div class="planner-fields">${paceField()}${input('walking','步行 / 体力要求','如安排午休，少爬台阶','maxlength="120"')}${input('transport','交通偏好','如公共交通为主，少换乘','maxlength="120"')}${input('food','饮食口味 / 忌口','没有特殊要求可留空','maxlength="300"')}</div><label>旅行兴趣<textarea name="preferences" rows="2" maxlength="1500" placeholder="人文街区、美食、博物馆、自然风景……"></textarea></label>${input('excluded','不考虑的地方','多个目的地用逗号分隔','maxlength="500"')}<p class="help">这里只调整本次旅行，长期偏好在上方单独保存。</p></details>
-        <label>补充要求 / 继续修改（选填）<textarea name="prompt" rows="3" minlength="2" maxlength="6000" placeholder="例如：午后留休息时间，少换酒店，多介绍当地特色与美食。没有补充要求可直接生成。"></textarea></label>
-        <p id="planner-followup" class="help">可与网站管家同时运行；本助手一次生成一份攻略，关闭页面后可以回来查看。</p>
-        <div class="actions"><button class="button primary" type="submit">生成攻略参考</button><button class="button" type="button" data-planner="new">开始新的规划</button></div>
+        ${input('people','出行人数','','type="number" min="1" max="50" value="1" required')}</div>
+        <details class="planner-more"><summary>住宿、预算与同行偏好</summary><div class="planner-fields">${input('rooms','房间需求','如 1 间双床房，住 3 晚','maxlength="120"')}${input('budget','预算','注明人均或总预算','maxlength="120"')}</div><label>本次同行情况<textarea name="companions" rows="2" maxlength="300" placeholder="按这次出行填写；带老人或孩子时可说明年龄、体力需求"></textarea></label><div class="planner-fields">${paceField()}${input('walking','步行 / 体力要求','如安排午休，少爬台阶','maxlength="120"')}${input('transport','交通偏好','如公共交通为主，少换乘','maxlength="120"')}${input('food','饮食口味 / 忌口','没有特殊要求可留空','maxlength="300"')}</div><label>旅行兴趣<textarea name="preferences" rows="2" maxlength="1500" placeholder="人文街区、美食、博物馆、自然风景……"></textarea></label>${input('excluded','不考虑的地方','多个目的地用逗号分隔','maxlength="500"')}<p class="help">这里只调整本次旅行，长期偏好在下方单独保存。</p></details>
+        <label>补充要求（选填）<textarea name="prompt" rows="3" minlength="2" maxlength="6000" placeholder="例如：午后留休息时间，少换酒店，多介绍当地特色与美食。没有补充要求可直接生成。"></textarea></label>
+        <p id="planner-followup" class="help">关闭页面后继续生成，完成后在任务记录中查看。</p>
+        <div class="actions"><button class="button primary" type="submit">生成攻略参考</button><button class="button" type="button" data-planner="new" hidden>重新开始</button></div>
         <p id="planner-error" class="form-error" role="alert"></p>
-      </form></section>
+      </form>${familyPanel()}</section>
       <section class="panel planner-history"><div class="panel-top"><h2>任务记录</h2><button class="button small" type="button" data-planner="refresh">刷新</button></div>${TaskManager.bar('planner')}<div id="planner-tasks"></div><button id="planner-older" class="button small" type="button" data-planner="older" hidden>加载更早的记录</button></section></div>
-      <section class="panel planner-detail" id="planner-detail" aria-live="polite"></section>`;
+      <section class="panel planner-detail" id="planner-detail" aria-live="polite" hidden></section>`;
     fillFamily();applyFamily();service(data.service);renderTasks();bind();
     const attachedId=new URLSearchParams(state.route.split('?')[1]||'').get('trip');
     if(attachedId&&/^\d+$/.test(attachedId)){const value=await api('/admin/trips/'+attachedId+'/assistant-context?view=planning');if(gen!==state.generation||token!==epoch)return;attach(value.context);}
     await loadDetail(token);if(token===epoch)schedule(token);
   }
   function service(info){
-    const available=info.online&&info.authenticated;
-    $('#planner-service').innerHTML=`<span class="agent-dot ${available?'online':''}"></span> ${available?(info.concurrency>=2?'可以开始规划 · 可与网站管家并行':'可以开始规划'):info.online?'账号需要重新登录':'助手暂未连接'}`;
-    $('#planner-service').title=assistantExecution(info.execution);$('#planner-service').innerHTML+='<small class="help">'+esc(assistantExecution(info.execution))+'</small>';$('#planner-service').className='planner-service';
+    const available=info.online&&info.authenticated,node=$('#planner-service');
+    const signature=JSON.stringify([available,info.online,info.concurrency,info.execution]);
+    if(node.dataset.signature===signature)return;
+    const opened=node.querySelector('details')?.open;
+    node.innerHTML=`<span><span class="agent-dot ${available?'online':''}"></span>${available?'助手可用':info.online?'账号需要重新登录':'助手暂未连接'}</span><details class="assistant-runtime" ${opened?'open':''}><summary>运行信息</summary><p>${esc(assistantExecution(info.execution))}</p><p>${info.concurrency>=2?'可与网站管家同时运行。':''}关闭页面后任务继续。</p></details>`;
+    node.dataset.signature=signature;
   }
   function renderTasks(){
-    $('#planner-tasks').innerHTML=tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${esc(t.workflow?({adjust_day:'调整当天',check_departure:'临行复核',recap:'整理回忆',preferences:'总结偏好'})[t.workflow]:t.trip.mode==='compare'?'候选地比较':'旅行攻略')} · ${Number(t.trip.days)||4} 天 · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`,'planner',checked)).join('')||empty('下一次出发，从这里开始','生成过的攻略和后续修改都会保存在这里。');
+    $('.planner-history').hidden=!tasks.length;
+    $('#planner-tasks').innerHTML=tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${esc(t.workflow?({adjust_day:'调整当天',check_departure:'临行复核',recap:'整理回忆',preferences:'总结偏好'})[t.workflow]:t.trip.mode==='compare'?'候选地比较':'旅行攻略')} · ${Number(t.trip.days)||4} 天 · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`,'planner',checked)).join('')||'<p class="muted">还没有生成记录。</p>';
     $('#planner-tasks').dataset.signature=JSON.stringify(tasks);TaskManager.update('planner',tasks,checked);$('#planner-older').hidden=!nextBefore;
   }
   function forgetTask(id){
@@ -98,7 +100,7 @@ const TravelPlanner = (() => {
     renderTasks();
   }
   async function loadDetail(token=epoch){
-    if(!selected){$('#planner-detail').innerHTML=empty('让计划先有一个起点','填好旅行想法，助手会结合季节、当地特色与参考资料整理方案。');return;}
+    if(!selected){$('#planner-detail').hidden=true;$('#planner-detail').replaceChildren();return;}
     const id=selected,version=revision;let data;
     const current=tasks.find(t=>t.id===id);
     // A fresh task list supplies the version; running tasks always bypass this cache.
@@ -118,15 +120,15 @@ const TravelPlanner = (() => {
     return `<button type="button" class="button primary" data-planner="publication-preview" data-mode="${mode}">${count>1?'拆分为 '+count+' 篇攻略发布':'预览并发布攻略'}</button>`;
   }
   function renderDetail(){
-    const t=detail,g=t.guide,complete=t.status==='done'&&g;
+    const t=detail,g=t.guide,complete=t.status==='done'&&g;$('#planner-detail').hidden=false;
     if(t.workflow){$('#planner-detail').innerHTML=`<h2>本次旅行的助手任务 #${t.id}</h2><p>${esc(t.workflow_result?.summary||t.result||'任务正在处理。')}</p><a class="button primary" href="#trip/${t.attached_trip_id}/${({adjust_day:'today',check_departure:'prepare',recap:'recap',preferences:'recap'})[t.workflow]}">回到本次旅行查看与采用 →</a>`;return;}
     const controls=['queued','running'].includes(t.status)?`<button type="button" class="button small" data-planner="cancel" data-id="${t.id}">停止生成</button>`:active(t.status)?'':`<button type="button" class="button small" data-planner="followup">继续修改</button>`;
     $('#planner-detail').innerHTML=`<div class="panel-top"><div><span class="eyebrow">${complete?'已完成的旅行计划':'正在规划'} · #${t.id}</span><h2>${esc(g?.title||t.trip.destination||'旅行攻略参考')}</h2></div><div class="actions"><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span>${controls}${!active(t.status)?`<button type="button" class="button small danger" data-planner="delete" data-id="${t.id}">删除记录</button>`:''}</div></div>
-      ${t.execution?`<p class="help">执行模型：${esc(assistantExecution(t.execution))}</p>`:''}${t.parent_id?`<p class="help">根据 <button type="button" class="planner-text-button" data-planner="select" data-id="${t.parent_id}">#${t.parent_id} 的方案</button> 继续完善</p>`:''}
+      ${t.execution?`<details class="assistant-runtime"><summary>执行信息</summary><p class="help">${esc(assistantExecution(t.execution))}</p></details>`:''}${t.parent_id?`<p class="help">根据 <button type="button" class="planner-text-button" data-planner="select" data-id="${t.parent_id}">#${t.parent_id} 的方案</button> 继续完善</p>`:''}
       <details><summary>查看这次需求</summary><p class="agent-request">${esc(t.prompt)}</p><p class="help">${esc([t.trip.origin&&'出发：'+t.trip.origin,t.trip.dates,`${t.trip.days} 天 / ${t.trip.people} 人`,t.trip.rooms,t.trip.budget,t.trip.companions,paceNames[t.trip.pace]&&'节奏：'+paceNames[t.trip.pace],t.trip.walking,t.trip.transport,t.trip.food&&'饮食：'+t.trip.food,t.trip.preferences,t.trip.excluded&&'排除：'+t.trip.excluded].filter(Boolean).join(' · '))}</p></details>
       ${complete?`<p class="planner-summary">${esc(g.summary)}</p><div class="planner-meta"><span>${esc(g.destination)} · ${g.days} 天</span><span>${esc(g.season)}</span><span>${esc(g.budget)}</span></div>
       <p class="planner-reference">${t.web_search_count?'已联网检索参考资料。':'未记录到联网检索，请另行核实。'} 门票、营业时间、价格和预约规则以出行时官方信息为准。</p>
-      <div class="planner-result-actions actions"><button type="button" class="button primary" data-planner="trip-adopt">采用为本次旅行</button>${publicationActions(t)}${t.guide_id?`<a class="button" href="#edit/${t.guide_id}">编辑已存档攻略 →</a>`:`<button type="button" class="button" data-planner="save">存为攻略草稿</button>`}<button type="button" class="button" data-planner="copy">复制正文</button><a class="button" href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a><button type="button" class="button" data-planner="enrich">智能整理图文与路线</button></div>
+      <div class="planner-result-actions actions"><button type="button" class="button primary" data-planner="trip-adopt">采用为本次旅行</button>${publicationActions(t)}<details class="admin-more"><summary class="button">更多操作<span aria-hidden="true">⌄</span></summary><div class="admin-more-menu">${t.guide_id?`<a href="#edit/${t.guide_id}">编辑已存档攻略</a>`:`<button type="button" data-planner="save">存为攻略草稿</button>`}<button type="button" data-planner="enrich">补全图文与路线</button><button type="button" data-planner="copy">复制正文</button><a href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a></div></details></div>
       ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}${t.photo_missing?.length?`<p class="help">待补配图：${t.photo_missing.map(esc).join('、')}。缺少准确素材时保留文字，不用相似景点或不同菜品替代。</p>`:''}<div id="planner-publication"></div><article class="prose planner-prose">${AdminImages.prepareHTML(t.html)}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
       `<p class="agent-answer">${esc(t.result||'任务已加入队列，轮到后会开始研究。')}</p>${t.progress.length?`<details open><summary>正在参考的资料</summary><ul class="planner-progress">${t.progress.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`:''}`}`;
   }
@@ -150,8 +152,8 @@ const TravelPlanner = (() => {
     },4000);
   }
   function lockedContext(){const t=attachedContext.trip;fill({destination:t.destination,dates:t.start_date+' 至 '+t.end_date,days:t.days,people:t.people,companions:t.companions});}
-  function detach(){attached=null;attachedContext=null;const form=$('#planner-form');for(const name of ['destination','dates','days','people'])form.elements[name].readOnly=false;$('#planner-trip-label').textContent='当前规划未关联实际旅行。';$('[data-planner=detach-trip]').hidden=true;}
-  function attach(context){attachedContext=context;attached=context.trip.id;const t=context.trip,form=$('#planner-form');fill({...context.plan?.conditions,destination:t.destination,dates:t.start_date+' 至 '+t.end_date,days:t.days,people:t.people,companions:t.companions});for(const name of ['destination','dates','days','people'])form.elements[name].readOnly=true;$('#planner-trip-label').textContent='已关联「'+t.title+'」：自动带入当前行程、实际交通住宿和已去地点。';$('[data-planner=detach-trip]').hidden=false;}
+  function detach(){attached=null;attachedContext=null;const form=$('#planner-form');for(const name of ['destination','dates','days','people'])form.elements[name].readOnly=false;$('#planner-trip-label').textContent='';$('#planner-trip-label').hidden=true;$('[data-planner=detach-trip]').hidden=true;}
+  function attach(context){attachedContext=context;attached=context.trip.id;const t=context.trip,form=$('#planner-form');fill({...context.plan?.conditions,destination:t.destination,dates:t.start_date+' 至 '+t.end_date,days:t.days,people:t.people,companions:t.companions});for(const name of ['destination','dates','days','people'])form.elements[name].readOnly=true;$('#planner-trip-label').textContent='已关联「'+t.title+'」，带入实际日期和当前行程。';$('#planner-trip-label').hidden=false;$('[data-planner=detach-trip]').hidden=false;}
   function fill(trip,replace=false){const form=$('#planner-form');for(const key of fields){if(trip[key]!==undefined)form.elements[key].value=trip[key];else if(replace)form.elements[key].value=({days:4,people:1,mode:'itinerary'})[key]??'';}}
   function bind(){
     const familyForm=$('#planner-family-form');familyForm.addEventListener('input',()=>{familyDirty=true;syncDirty();});familyForm.addEventListener('submit',saveFamily);

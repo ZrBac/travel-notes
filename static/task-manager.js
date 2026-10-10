@@ -3,14 +3,16 @@ const TaskManager=(()=>{
  const active=status=>['queued','running','testing','publishing'].includes(status);
  const labels={queued:'排队中',running:'处理中',testing:'测试中',publishing:'发布中',ready:'待发布',done:'已完成',failed:'未完成',cancelled:'已停止',published:'已发布',manual:'需单独部署'};
  let closeCurrent=null;
- function bar(prefix){return `<div class="task-selection" id="${prefix}-selection"><label><input type="checkbox" data-${prefix}="select-all" aria-label="全选已显示的可删除任务">全选已显示</label><span data-task-count>未选择</span><button class="button small danger" type="button" data-${prefix}="delete-selected" disabled>删除所选</button><button class="task-text-action" type="button" data-${prefix}="clear-selection" disabled>取消选择</button></div><p class="task-selection-help">处理中记录不可删除；有关联的后续记录会在确认时一起列出。</p>`;}
+ function bar(prefix){return `<div class="task-selection" id="${prefix}-selection" hidden><label><input type="checkbox" data-${prefix}="select-all" aria-label="全选已显示的可删除任务">全选</label><span data-task-count hidden></span><button class="button small danger" type="button" data-${prefix}="delete-selected" disabled hidden>删除所选</button><button class="task-text-action" type="button" data-${prefix}="clear-selection" disabled hidden>取消选择</button></div>`;}
  function row(task,content,prefix,checked){return `<div class="task-row"><label class="task-check"><input type="checkbox" data-${prefix}="check" data-id="${task.id}" aria-label="选择任务 #${task.id}" ${checked.has(task.id)?'checked':''} ${active(task.status)?'disabled':''}></label>${content}<button class="task-text-action task-delete" type="button" data-${prefix}="delete" data-id="${task.id}" ${active(task.status)?'disabled title="等待任务结束后可删除"':''} aria-label="删除任务 #${task.id}">删除</button></div>`;}
  function update(prefix,tasks,checked){
   const usable=tasks.filter(t=>!active(t.status)),ids=new Set(usable.map(t=>t.id));for(const id of checked)if(!ids.has(id))checked.delete(id);
   const bar=$('#'+prefix+'-selection');if(!bar)return;
+  bar.hidden=!tasks.length;
   const all=$('[data-'+prefix+'="select-all"]',bar);all.checked=!!ids.size&&checked.size===ids.size;all.indeterminate=checked.size>0&&checked.size<ids.size;all.disabled=!ids.size;
-  $('[data-task-count]',bar).textContent=checked.size?'已选 '+checked.size+' 条':'未选择';
-  for(const button of bar.querySelectorAll('button'))button.disabled=!checked.size;
+  $('[data-task-count]',bar).textContent='已选 '+checked.size+' 条';
+  $('[data-task-count]',bar).hidden=!checked.size;
+  for(const button of bar.querySelectorAll('button')){button.disabled=!checked.size;button.hidden=!checked.size;}
   for(const input of document.querySelectorAll('[data-'+prefix+'="check"]')){input.checked=checked.has(Number(input.dataset.id));input.closest('.task-row').classList.toggle('is-checked',input.checked);}
  }
  function select(prefix,action,node,tasks,checked){
