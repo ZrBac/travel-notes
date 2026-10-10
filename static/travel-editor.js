@@ -96,10 +96,10 @@ const TravelEditor=(()=>{
    catch(error){errors.push(file.name+'：'+error.message);}
   }}finally{ctx.uploading=false;ctx.fileInput.value='';if(owns(ctx)){ctx.tip.textContent=`已插入 ${count} 张图片，保存后完成存档。`+(errors.length?' 未完成：'+errors.join('；'):'');if(errors.length)toast('部分图片未上传，请查看编辑器提示。',true);}}
  }
- async function replace(body){const ctx=current;if(!ctx)return;
+ async function replace(body,html){const ctx=current;if(!ctx)return;
   if(ctx.mode==='source'){ctx.textarea.value=body;ctx.onChange();return;}
   ctx.pending=true;
-  try{const result=await ctx.preview(body);if(!owns(ctx))return;ctx.ready=false;ctx.editor.value=result.html;ctx.original=body;ctx.textarea.value=body;ctx.baseline=serialized(ctx,ctx.editor.value);ctx.ready=true;ctx.onChange();}finally{ctx.pending=false;}
+  try{const result=typeof html==='string'?{html}:await ctx.preview(body);if(!owns(ctx))return;ctx.ready=false;ctx.editor.value=result.html;ctx.original=body;ctx.textarea.value=body;ctx.baseline=serialized(ctx,ctx.editor.value);ctx.ready=true;ctx.onChange();}finally{ctx.pending=false;}
  }
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&current?.wrap.classList.contains('is-focused')&&!document.querySelector('dialog[open]')){current.wrap.querySelector('[data-writing=focus]').click();}});
  return {preload:()=>assets().catch(()=>{}),mount,destroy,sync,replace,remember,insertImage,get busy(){return !!(current?.pending||current?.uploading);}};

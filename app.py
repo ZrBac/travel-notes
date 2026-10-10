@@ -456,19 +456,25 @@ def validate_record(data):
 @app.post('/api/records')
 @admin_required
 def create_record():
-    values=validate_record(payload())
+    data=payload();existing=record_assistant_saved(db,data)
+    if existing:return jsonify(id=existing,already_saved=True)
+    values=validate_record(data)
     row=db().execute('INSERT INTO travel_records('+','.join(values)+') VALUES('+','.join('%s' for _ in values)+') RETURNING id',list(values.values())).fetchone()
+    record_assistant_link(db,data,row['id'])
     audit('record.create',row['id'],{'title':values['title'],'status':values['status']});db().commit()
     return jsonify(id=row['id']),201
 
 @app.put('/api/records/<int:record_id>')
 @admin_required
 def update_record(record_id):
-    row=record_row(record_id,True);data=payload()
+    data=payload();existing=record_assistant_saved(db,data)
+    if existing and existing!=record_id:abort(409,description='这次整理已用于另一篇足迹，请打开原足迹继续编辑')
+    row=record_row(record_id,True)
     if row['deleted_at']:abort(400,description='请先恢复回收站中的记录')
     if data.get('revision')!=row['revision']:abort(409,description='记录已在其他页面修改，请保留当前内容并刷新后再试')
     values=validate_record(data);values['revision']=row['revision']+1
     db().execute('UPDATE travel_records SET '+','.join(k+'=%s' for k in values)+' WHERE id=%s',list(values.values())+[record_id])
+    record_assistant_link(db,data,record_id)
     audit('record.update',record_id,{'title':values['title'],'status':values['status']});db().commit()
     return jsonify(id=record_id,revision=values['revision'])
 
@@ -879,7 +885,7 @@ def media_reference_map(rows):
     queries=[
         r"SELECT g.id,g.title,g.deleted_at,'guide' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT g.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(g.body,'/media/([a-f0-9]{32}\.webp)','g') m) links) AS urls FROM guides g ORDER BY g.id",
         r"SELECT r.id,r.title,r.deleted_at,'record' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT r.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(r.body,'/media/([a-f0-9]{32}\.webp)','g') m UNION ALL SELECT photo->>'url' FROM jsonb_array_elements(r.photos) photo) links) AS urls FROM travel_records r ORDER BY r.id",
-        r"SELECT t.id,'旅游助手 · '||coalesce(t.report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.report->'travel_guide'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' UNION ALL SELECT t.id,t.title,NULL AS deleted_at,'trip' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM trip_plans p CROSS JOIN LATERAL regexp_matches(coalesce(p.snapshot->>'reference_body',''),'/media/([a-f0-9]{32}\.webp)','g') m WHERE p.trip_id=t.id) AS urls FROM trips t UNION ALL SELECT DISTINCT t.id,t.title,NULL AS deleted_at,'trip' AS kind,ARRAY(SELECT DISTINCT photo->>'url' FROM trip_notes n CROSS JOIN LATERAL jsonb_array_elements(n.photos) photo WHERE n.trip_id=t.id) AS urls FROM trips t UNION ALL SELECT t.id,'旅游助手 · 旅行记录' AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.request->'context'->>'notes',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' ORDER BY id",
+        r"SELECT t.id,'旅游助手 · '||coalesce(t.report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.report->'travel_guide'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' UNION ALL SELECT t.id,t.title,NULL AS deleted_at,'trip' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM trip_plans p CROSS JOIN LATERAL regexp_matches(coalesce(p.snapshot->>'reference_body',''),'/media/([a-f0-9]{32}\.webp)','g') m WHERE p.trip_id=t.id) AS urls FROM trips t UNION ALL SELECT DISTINCT t.id,t.title,NULL AS deleted_at,'trip' AS kind,ARRAY(SELECT DISTINCT photo->>'url' FROM trip_notes n CROSS JOIN LATERAL jsonb_array_elements(n.photos) photo WHERE n.trip_id=t.id) AS urls FROM trips t UNION ALL SELECT t.id,'旅游助手 · 旅行记录' AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT '/media/'||m[1] url FROM regexp_matches(coalesce(t.request->'context'->>'notes','')||coalesce(t.request->'record_snapshot'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m UNION ALL SELECT photo->>'url' FROM jsonb_array_elements(coalesce(t.request->'record_snapshot'->'photos','[]'::jsonb)) photo) links) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' ORDER BY id",
     ]
     if rows:
         for query in queries:
@@ -1033,3 +1039,6 @@ register_trips(app, db, payload, audit, render_markdown)
 
 from trip_assistant_api import register as register_trip_assistant
 register_trip_assistant(app, db, payload, audit, render_markdown, validate_record)
+
+from record_assistant_api import register as register_record_assistant, saved_record as record_assistant_saved, link_saved as record_assistant_link
+register_record_assistant(app, db, payload, audit, render_markdown, validate_record)

@@ -11,7 +11,7 @@ import stat
 DIRECTORIES = ('static','ops-config','tests','migrations')
 ROOT_EXTENSIONS = ('.py','.sql','.txt','.md')
 APP_MODULES = {'app.py','performance.py','html_imports.py','handbooks.py'}
-BUSINESS_MODULES = {'agent_api.py','travel_planner_api.py','travel_publication.py','task_management.py','trip_api.py','trip_assistant_api.py'}
+BUSINESS_MODULES = {'agent_api.py','travel_planner_api.py','travel_publication.py','task_management.py','trip_api.py','trip_assistant_api.py','record_assistant_api.py'}
 
 
 def reviewable(name, old, new):

@@ -7,3 +7,20 @@
 /* Keep save feedback in its own row, clear of the full-width actions. */
 .record-save-panel>.button{display:flex;justify-content:center;min-height:44px}
 #record-save-note{margin:12px 0 16px}
+
+/* Keep optional writing help folded into the existing editor. */
+.record-ai,.record-manual-template{border:1px solid var(--line,#dde5df);border-radius:12px;margin:0 0 16px;overflow:hidden}
+.record-ai>summary,.record-manual-template>summary{padding:14px 16px;cursor:pointer;font-size:13px;color:var(--ink,#254e43)}
+.record-ai>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}
+.record-ai>summary::-webkit-details-marker{display:none}.record-ai>summary:after{content:'⌄';color:#7d8d82}.record-ai[open]>summary:after{transform:rotate(180deg)}
+.record-ai>summary>span{display:flex;align-items:center;gap:8px;white-space:nowrap}.record-ai>summary small{font-size:11px;color:#7d8d82;flex:1;text-align:right;line-height:1.6}
+.record-ai[open]>summary,.record-manual-template[open]>summary{border-bottom:1px solid var(--line,#dde5df)}
+.record-ai-content{padding:16px}.record-ai-content label{margin-top:0}.record-ai-content textarea{min-height:95px}.record-ai-content .actions{flex-wrap:wrap}
+.record-ai-preview{margin-top:18px;padding-top:18px;border-top:1px solid var(--line,#dde5df)}.record-ai-preview>h3{font-size:20px;margin:0 0 10px}.record-ai-preview>p{font-size:13px;line-height:1.9;overflow-wrap:anywhere}
+.record-ai-body{margin:14px 0}.record-ai-body summary,.record-ai-history>summary{cursor:pointer;font-size:12px;color:#587360}.record-ai-body .prose{max-height:520px;overflow:auto;overscroll-behavior:contain;padding:12px 4px;overflow-wrap:anywhere}.record-ai-body .prose img{max-width:100%;height:auto}
+.record-ai-warning{color:#9a6d42}.record-ai-choice{display:flex;gap:8px;align-items:center;font-size:12px!important;font-weight:400!important;margin:16px 0!important}.record-ai-choice input{width:16px;height:16px;flex:none;accent-color:#254e43}
+.record-ai-history{margin-top:18px}.record-ai-history[open]>summary{margin-bottom:10px}#record-ai-tasks{max-height:300px;overflow:auto}.record-ai-task{width:100%;display:flex;gap:12px;justify-content:space-between;text-align:left;border:0;border-top:1px solid var(--line,#dde5df);background:transparent;padding:12px 0;cursor:pointer;font:inherit;color:inherit}.record-ai-task>span{min-width:0}.record-ai-task strong{font-size:12px;font-weight:500}.record-ai-task small{display:block;font-size:11px;color:#7d8d82;line-height:1.8}.record-ai-task>small{white-space:nowrap}.record-ai-task span small{overflow-wrap:anywhere}
+.record-manual-template .template-controls{margin:0;padding:16px;border:0;border-radius:0}
+@media(max-width:600px){.record-ai>summary{padding:13px 12px;flex-wrap:wrap;gap:6px}.record-ai>summary small{flex-basis:100%;order:3;text-align:left}.record-ai-content{padding:12px}.record-ai-body .prose{max-height:420px}.record-ai-preview>h3{font-size:18px}.record-ai-content .actions>.button{flex:1;min-width:110px;min-height:42px}.record-ai-task{gap:8px}}
+
+@media(max-width:900px){.record-ai button,.record-ai summary{scroll-margin-top:90px;scroll-margin-bottom:180px}}

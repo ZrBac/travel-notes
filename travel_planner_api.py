@@ -101,7 +101,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         before = request.args.get('before', '')
         if before and (not before.isascii() or not before.isdigit() or len(before)>18 or int(before)<1):
             abort(400, description='分页位置无效')
-        rows = db().execute("SELECT id,prompt,status,parent_id,created_at,updated_at,request->'trip' trip,request->'guide_id' guide_id,request->>'workflow' workflow,request->'attached_trip_id' attached_trip_id FROM agent_tasks WHERE "+SCOPE+
+        rows = db().execute("SELECT id,prompt,status,parent_id,created_at,updated_at,request->'trip' trip,request->'guide_id' guide_id,request->>'workflow' workflow,request->'attached_trip_id' attached_trip_id,coalesce(request->'saved_record_id',request->'record_id') record_id FROM agent_tasks WHERE "+SCOPE+
                             (' AND id<%s' if before else '')+' ORDER BY id DESC LIMIT 51', (int(before),) if before else ()).fetchall()
         items = [{**row,'trip':row['trip'] or {}} for row in rows[:50]]
         return jsonify(tasks=items, next_before=rows[49]['id'] if len(rows)>50 else None, service=service(), family_preferences=family_preferences())
@@ -111,6 +111,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         row = task(task_id)
         report = row['report']; guide = report.get('travel_guide')
         result = {key:row[key] for key in ('id','prompt','status','parent_id','result','created_at','updated_at')}
+        result['record_id']=row['request'].get('saved_record_id') or row['request'].get('record_id')
         if request.args.get('view')=='status':
             result.update(result=row['result'][-6000:],trip=row['request'].get('trip',{}),progress=report.get('progress',[])[-15:],execution=report.get('execution',{}),workflow=row['request'].get('workflow'),attached_trip_id=row['request'].get('attached_trip_id'),guide=None,html='')
             return jsonify(task=result)
@@ -120,7 +121,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
                       html=render_markdown(guide['body']) if row['status']=='done' and guide else '')
         result['destinations'] = destinations(guide) if guide else []
         result['publications'] = row['request'].get('publications', {})
-        result.update(workflow=row['request'].get('workflow'),attached_trip_id=row['request'].get('attached_trip_id'),
+        result.update(workflow=row['request'].get('workflow'),attached_trip_id=row['request'].get('attached_trip_id'),record_id=row['request'].get('saved_record_id') or row['request'].get('record_id'),
                       context={k:v for k,v in (row['request'].get('context') or {}).items() if k in ('trip','plan')},workflow_result=report.get('workflow_result'),execution=report.get('execution',{}))
         return jsonify(task=result)
 

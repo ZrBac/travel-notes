@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 from artifacts import copy_code, manifest, fingerprint, compare, replace
 import travel_planner
 import trip_workflows
+import record_workflows
 from guide_visuals import compose
 import uuid
 import stat
@@ -130,10 +131,15 @@ def launch(unit,user,cwd,args,log,writable,testing=False,input_path=None,memory=
         return subprocess.Popen(cmd+['/usr/bin/env','-i',*env,*args],stdin=source,stdout=output,stderr=subprocess.STDOUT,cwd='/')
 
 
+def workflow_module(task):
+    action=task['request'].get('workflow')
+    return record_workflows if action in record_workflows.ACTIONS else trip_workflows if action in trip_workflows.ACTIONS else None
+
+
 def prompt_for(task,work,resume_note='从当前正式代码创建开发副本。'):
     if travel_planner.is_travel(task):
-        if task['request'].get('workflow') in trip_workflows.ACTIONS:
-            return trip_workflows.prompt_for(task)
+        handler=workflow_module(task)
+        if handler:return handler.prompt_for(task)
         history=[];parent=task['parent_id']
         for _ in range(8):
             if not parent: break
@@ -173,7 +179,8 @@ def begin_locked(task):
     baseline=root/'baseline';work=WORK/str(task_id)
     if travel:
         work.mkdir(mode=0o700)
-        schema=trip_workflows.output_schema(task) if task['request'].get('workflow') in trip_workflows.ACTIONS else travel_planner.OUTPUT_SCHEMA
+        handler=workflow_module(task)
+        schema=handler.output_schema(task) if handler else travel_planner.OUTPUT_SCHEMA
         (work/'response-schema.json').write_text(json.dumps(schema))
     else:
         copy_code(LIVE,baseline);copy_code(baseline,work)
@@ -197,7 +204,7 @@ def begin_locked(task):
     if travel:
         args[1:1]=['-c','web_search="live"','--disable','shell_tool','--disable','apps','--disable','multi_agent']
         args[-1:-1]=['--output-schema',str(work/'response-schema.json')]
-    update(task_id,'running','正在检索目的地资料并规划行程。' if travel else '正在读取项目并执行任务。')
+    update(task_id,'running',('正在整理旅行足迹。' if task['request'].get('workflow') in record_workflows.ACTIONS else '正在检索目的地资料并规划行程。') if travel else '正在读取项目并执行任务。')
     proc=launch(unit,'travelagent',work,args,root/'model.log',[work,HOME/'.codex'],input_path=root/'prompt.txt',memory=640 if travel else 900,cpu=70 if travel else 100)
     return {'task':task,'phase':'model','process':proc,'unit':unit,'root':root,'work':work,'started':time.time(),
             'task_started':time.time(),'last_save':0,'result':'','resume_note':resume_note,'repair_attempt':0}
@@ -322,7 +329,7 @@ def finish_step(active):
         travel=travel_planner.is_travel(task)
         active['execution']=data.get('execution',{})
         if time.time()-active['last_save']>3:
-            message={'adjust_day':'正在结合当前路线调整所选日期。','check_departure':'正在核对出发准备与官方信息。','recap':'正在根据真实随记整理旅行回忆。','preferences':'正在根据真实随记总结偏好建议。'}.get(task['request'].get('workflow'),'正在检索资料并整理完整攻略，请稍候。')
+            message={'adjust_day':'正在结合当前路线调整所选日期。','check_departure':'正在核对出发准备与官方信息。','recap':'正在根据真实随记整理旅行回忆。','preferences':'正在根据真实随记总结偏好建议。','record_generate':'正在根据真实经历和照片说明整理游记。','record_polish':'正在润色已有游记，保留原有照片和真实细节。'}.get(task['request'].get('workflow'),'正在检索资料并整理完整攻略，请稍候。')
             update(task_id,result=(message if travel else data['result'] or '正在执行任务…'),
                    report={**execution_report(active,data['usage']),'progress':data['progress'],'web_search_count':data['web_search_count'],
                            'outcome':'repairing' if active.get('repair_attempt') else 'working'})
@@ -333,8 +340,9 @@ def finish_step(active):
             message='\n'.join(data['errors']) or safe_text(model_log.read_text(errors='replace')[-1500:])
             update(task_id,'failed',data['result']+'\n任务未完成：'+message,{**execution_report(active,data['usage']),'reason':message,'publishable':False});return True
         if travel:
-            if task['request'].get('workflow') in trip_workflows.ACTIONS:
-                try: result=trip_workflows.parse_answer(data['last_message'],task['request'])
+            handler=workflow_module(task)
+            if handler:
+                try: result=handler.parse_answer(data['last_message'],task['request'])
                 except ValueError as error:
                     update(task_id,'failed',str(error),{'reason':str(error),'progress':data['progress'],'web_search_count':data['web_search_count']});return True
                 if task['request']['workflow']=='check_departure' and not data['web_search_count']:

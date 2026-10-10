@@ -89,7 +89,7 @@ const TravelPlanner = (() => {
   }
   function renderTasks(){
     $('.planner-history').hidden=!tasks.length;
-    $('#planner-tasks').innerHTML=tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${esc(t.workflow?({adjust_day:'调整当天',check_departure:'临行复核',recap:'整理回忆',preferences:'总结偏好'})[t.workflow]:t.trip.mode==='compare'?'候选地比较':'旅行攻略')} · ${Number(t.trip.days)||4} 天 · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`,'planner',checked)).join('')||'<p class="muted">还没有生成记录。</p>';
+    $('#planner-tasks').innerHTML=tasks.map(t=>TaskManager.row(t,`<button type="button" class="agent-task ${t.id===selected?'selected':''}" data-planner="select" data-id="${t.id}"><span><strong>${esc(t.trip.destination||t.prompt.slice(0,65))}</strong><small>${esc(t.workflow?({adjust_day:'调整当天',check_departure:'临行复核',recap:'整理回忆',preferences:'总结偏好',record_generate:'生成足迹',record_polish:'润色足迹'})[t.workflow]:t.trip.mode==='compare'?'候选地比较':'旅行攻略')}${t.workflow?.startsWith('record_')?'':' · '+(Number(t.trip.days)||4)+' 天'} · ${date(t.created_at)}</small><small>${esc(t.prompt.slice(0,95))}</small></span><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span></button>`,'planner',checked)).join('')||'<p class="muted">还没有生成记录。</p>';
     $('#planner-tasks').dataset.signature=JSON.stringify(tasks);TaskManager.update('planner',tasks,checked);$('#planner-older').hidden=!nextBefore;
   }
   function forgetTask(id){
@@ -121,6 +121,7 @@ const TravelPlanner = (() => {
   }
   function renderDetail(){
     const t=detail,g=t.guide,complete=t.status==='done'&&g;$('#planner-detail').hidden=false;
+    if(t.workflow?.startsWith('record_')){$('#planner-detail').innerHTML=`<h2>旅行足迹整理 #${t.id}</h2><p>${esc(t.workflow_result?.summary||t.result||'正在整理。')}</p><a class="button primary" href="#${t.record_id?'record-edit/'+t.record_id:'record-new'}?ai=${t.id}">打开足迹编辑器查看 →</a>`;return;}
     if(t.workflow){$('#planner-detail').innerHTML=`<h2>本次旅行的助手任务 #${t.id}</h2><p>${esc(t.workflow_result?.summary||t.result||'任务正在处理。')}</p><a class="button primary" href="#trip/${t.attached_trip_id}/${({adjust_day:'today',check_departure:'prepare',recap:'recap',preferences:'recap'})[t.workflow]}">回到本次旅行查看与采用 →</a>`;return;}
     const controls=['queued','running'].includes(t.status)?`<button type="button" class="button small" data-planner="cancel" data-id="${t.id}">停止生成</button>`:active(t.status)?'':`<button type="button" class="button small" data-planner="followup">继续修改</button>`;
     $('#planner-detail').innerHTML=`<div class="panel-top"><div><span class="eyebrow">${complete?'已完成的旅行计划':'正在规划'} · #${t.id}</span><h2>${esc(g?.title||t.trip.destination||'旅行攻略参考')}</h2></div><div class="actions"><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span>${controls}${!active(t.status)?`<button type="button" class="button small danger" data-planner="delete" data-id="${t.id}">删除记录</button>`:''}</div></div>
