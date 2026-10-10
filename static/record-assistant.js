@@ -1,6 +1,6 @@
 /* Footprint editor AI uses the existing travel queue, with no stored browser drafts. */
 const RecordAssistant=(()=>{
- const endpoint='/admin/record-assistant/tasks',names={record_generate:'生成游记',record_polish:'润色正文'},statuses={queued:'等待整理',running:'正在整理',done:'整理完成',failed:'未完成',cancelled:'已停止'};
+ const endpoint='/admin/record-assistant/tasks',names={record_generate:'生成游记',record_polish:'润色正文',record_photos:'识图配说明'},statuses={queued:'等待整理',running:'正在整理',done:'整理完成',failed:'未完成',cancelled:'已停止'};
  const fields=['id','revision','title','destination','start_date','end_date','summary','body','actual_cost','photos'];
  let ctx=null,sequence=0;
  const active=t=>['queued','running','testing','publishing'].includes(t?.status);
@@ -8,16 +8,21 @@ const RecordAssistant=(()=>{
  const signature=value=>JSON.stringify(normalize(value));
  const key=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
  const here=c=>ctx===c&&c.generation===state.generation&&c.form.isConnected;
- function panel(){return `<details id="record-ai" class="record-ai"><summary><span>${icon('spark')}AI 整理</span><small>几张照片，几句经历，留成一篇游记</small></summary><div class="record-ai-content"><label for="record-ai-prompt">经历或修改要求<textarea id="record-ai-prompt" rows="3" maxlength="2000" placeholder="例如：和家人在南京逛老街，吃了鸭血粉丝汤，下午走累了就回酒店休息。&#10;已有正文也可以说：写得自然一点，缩短重复的部分。"></textarea></label><p class="help">根据正文、照片说明和补充经历整理。给照片加一句说明，会更贴近真实回忆。</p><div class="actions"><button type="button" class="button primary" data-record-ai="generate">生成游记</button><button type="button" class="button" data-record-ai="polish">润色正文</button></div><p id="record-ai-status" class="help" role="status"></p><div id="record-ai-result"></div><details class="record-ai-history"><summary>最近的整理记录</summary><div id="record-ai-tasks"><p class="help">展开后查看。</p></div></details></div></details>`;}
+ function panel(){return `<details id="record-ai" class="record-ai"><summary><span>${icon('spark')}AI 整理</span><small>几张照片，几句经历，留成一篇游记</small></summary><div class="record-ai-content"><label for="record-ai-prompt">经历或修改要求<textarea id="record-ai-prompt" rows="3" maxlength="2000" placeholder="例如：和家人在南京逛老街，吃了鸭血粉丝汤，下午走累了就回酒店休息。&#10;已有正文也可以说：写得自然一点，缩短重复的部分。"></textarea></label><p class="help">可先在「整理相册」里识图配说明，再生成游记；也可以直接根据正文和几句经历整理。</p><div class="actions"><button type="button" class="button primary" data-record-ai="generate">生成游记</button><button type="button" class="button" data-record-ai="polish">润色正文</button></div><p id="record-ai-status" class="help" role="status"></p><div id="record-ai-result"></div><details class="record-ai-history"><summary>最近的整理记录</summary><div id="record-ai-tasks"><p class="help">展开后查看。</p></div></details></div></details>`;}
  function stop(){sequence++;if(!ctx)return;clearTimeout(ctx.timer);ctx.reader.abort();ctx=null;}
  function report(c,error){if(!here(c)||error.name==='AbortError')return;$('#record-ai-status').textContent=error.message;}
  function matches(c){return c.task?.snapshot&&signature(c.getSnapshot())===signature(c.task.snapshot);}
- function controls(c){if(!here(c))return;for(const button of c.panel.querySelectorAll('[data-record-ai=generate],[data-record-ai=polish]'))button.disabled=c.writing||active(c.task);const apply=$('[data-record-ai=apply]',c.panel);if(apply)apply.disabled=c.writing||!!c.applied||!matches(c);const undo=$('[data-record-ai=undo]',c.panel);if(undo)undo.disabled=c.writing||!c.undo||signature(c.getSnapshot())!==c.undo.after;}
+ function controls(c){if(!here(c))return;for(const button of c.panel.querySelectorAll('[data-record-ai=generate],[data-record-ai=polish]'))button.disabled=c.writing||active(c.task);const apply=$('[data-record-ai=apply]',c.panel);if(apply)apply.disabled=c.writing||!!c.applied||!matches(c);const undo=$('[data-record-ai=undo]',c.panel);if(undo)undo.disabled=c.writing||!c.undo||(signature(c.getSnapshot())!==c.undo.after||(c.undo.photos&&c.getAlbumState().cover!==c.undo.afterCover));}
  function changed(){const c=ctx;if(!c||!here(c))return;controls(c);const warning=$('#record-ai-stale');if(warning)warning.hidden=matches(c)||!!c.applied;}
  function render(c){if(!here(c)||!c.task)return;const t=c.task,p=t.proposal;$('#record-ai-status').textContent=`${names[t.action]||'足迹整理'} · #${t.id} · ${statuses[t.status]||t.status}`;
+  if(p?.photos){renderPhotos(c,p);controls(c);AdminImages.resume();return;}
   $('#record-ai-result').innerHTML=p?`<div class="record-ai-preview"><h3>${esc(p.title)}</h3><p>${esc(p.summary)}</p>${p.warnings.map(w=>`<p class="record-ai-warning">${esc(w)}</p>`).join('')}<details class="record-ai-body" open><summary>游记预览</summary><article class="prose">${AdminImages.prepareHTML(p.html)}</article></details><p class="record-ai-warning" id="record-ai-stale" ${matches(c)||c.applied?'hidden':''}>生成后正文、日期或照片有更新，请按最新内容重新整理，当前改动会保留。</p><label class="record-ai-choice"><input id="record-ai-meta" type="checkbox" ${t.action==='record_generate'?'checked':''}>同时采用标题和简介</label><div class="actions"><button class="button primary" type="button" data-record-ai="apply">${c.applied?'已填入编辑器':'采用到编辑器'}</button>${c.undo?'<button class="button" type="button" data-record-ai="undo">撤销本次填入</button>':''}${!matches(c)&&!c.applied&&!c.getSnapshot().id&&!t.snapshot.id?'<button class="button" type="button" data-record-ai="restore">取回这次的照片和原稿</button>':''}</div><p class="help">采用后仍需点击「保存旅行足迹」，可见范围由保存时的选择决定。</p></div>`:`<p class="help">${esc(t.reason||(active(t)?'关闭页面后仍会继续，回来可在整理记录中查看。':'可以保留当前文字和照片，修改要求后重试。'))}</p>${active(t)?'<div class="actions"><button type="button" class="button small" data-record-ai="refresh">查看进度</button><button type="button" class="button small" data-record-ai="cancel">停止整理</button></div>':''}`;
   controls(c);AdminImages.resume();
  }
+ function renderPhotos(c,p){if(!c.photoDrafts)c.photoDrafts=p.photos.map(photo=>photo.caption);
+  $('#record-ai-result').innerHTML=`<div class="record-ai-preview"><h3>照片说明建议</h3><p class="help">逐张查看或修改后采用。原来写过的说明默认保留，AI 的地点建议需要核对。</p>${p.warnings.map(w=>`<p class="record-ai-warning">${esc(w)}</p>`).join('')}<div class="record-photo-suggestions">${p.photos.map(photo=>`<div class="record-photo-suggestion"><img data-admin-src="${esc(adminThumbnail(photo.url))}" loading="lazy" decoding="async" alt="第 ${photo.index+1} 张照片"><div><small>第 ${photo.index+1} 张 · ${esc(photo.subject)}${photo.highlight?' · 推荐配图':''}${photo.confidence==='low'?' · 需核对':''}</small><label>说明建议<textarea maxlength="200" rows="2" data-photo-ai-caption="${photo.index}">${esc(c.photoDrafts[photo.index])}</textarea></label>${photo.original_caption?`<p class="help">原说明：${esc(photo.original_caption)}</p>`:''}${photo.place_hint?`<p class="help">地点建议（待确认）：${esc(photo.place_hint)}</p>`:''}${photo.quality_note?`<p class="help">${esc(photo.quality_note)}</p>`:''}</div></div>`).join('')}</div><p class="record-ai-warning" id="record-ai-stale" ${matches(c)||c.applied?'hidden':''}>照片或内容已有更新，请按最新内容重新识图。</p><label class="record-ai-choice"><input type="checkbox" id="record-ai-overwrite">同时替换原来写过的照片说明</label><div class="actions"><button class="button primary" type="button" data-record-ai="apply">${c.applied?'已填入照片说明':'采用照片说明'}</button>${c.undo?'<button class="button" type="button" data-record-ai="undo">撤销本次填入</button>':''}${!matches(c)&&!c.applied&&!c.getSnapshot().id&&!c.task.snapshot.id?'<button class="button" type="button" data-record-ai="restore">取回这次的照片和原稿</button>':''}</div><p class="help">采用后可以生成图文游记；点击「保存旅行足迹」后才会存档。</p></div>`;
+ }
+ document.addEventListener('input',event=>{const node=event.target.closest('[data-photo-ai-caption]'),c=ctx;if(node&&c&&here(c)&&c.photoDrafts)c.photoDrafts[Number(node.dataset.photoAiCaption)]=node.value;});
  async function history(c){if(!here(c)||c.historyLoaded)return;c.historyLoaded=true;
   try{const d=await api(endpoint+'?record_id='+(c.getSnapshot().id||'new'),{signal:c.reader.signal});if(!here(c))return;
    $('#record-ai-tasks').innerHTML=d.tasks.length?d.tasks.map(t=>`<button type="button" class="record-ai-task" data-record-ai="select" data-id="${t.id}"><span><strong>${esc(names[t.action])} · #${t.id}</strong><small>${esc(t.prompt.slice(0,80))}</small></span><small>${esc(statuses[t.status]||t.status)}</small></button>`).join(''):'<p class="help">还没有整理记录。</p>';
@@ -32,7 +37,7 @@ const RecordAssistant=(()=>{
   }catch(error){if(here(c)&&version===sequence&&error.name!=='AbortError'){c.failures++;if(error.status===404){c.task={...c.task,status:'failed',reason:'整理记录已删除，当前照片和文字仍保留，可以重新整理。'};render(c);}controls(c);report(c,error);}}finally{if(here(c)){c.reading=null;schedule(c);}}})();c.reading=job;return job;
  }
  async function select(c,id,initial){if(!here(c)||c.writing)return;clearTimeout(c.timer);c.reader.abort();c.reader=new AbortController();const version=++sequence;
-  c.task=null;c.undo=null;c.applied=null;$('#record-ai-status').textContent='正在读取整理记录…';$('#record-ai-result').replaceChildren();
+  c.task=null;c.undo=null;c.applied=null;c.photoDrafts=null;$('#record-ai-status').textContent='正在读取整理记录…';$('#record-ai-result').replaceChildren();
   const d=initial?{task:initial}:await api(endpoint+'/'+id,{signal:c.reader.signal});if(!here(c)||version!==sequence)return;
   c.task=d.task;$('#record-ai-prompt').value=d.task.prompt||'';c.failures=0;render(c);schedule(c);
  }
@@ -42,7 +47,7 @@ const RecordAssistant=(()=>{
   const id=new URLSearchParams(state.route.split('?')[1]||'').get('ai');if(id&&/^[1-9][0-9]{0,17}$/.test(id)){c.panel.open=true;select(c,Number(id),initial).catch(error=>report(c,error));}
  }
  async function submit(c,action){if(c.writing||active(c.task))return;if(TravelEditor.busy||c.uploading()){toast('请等待照片上传或编辑器加载完成。');return;}
-  const snapshot=c.getSnapshot(),prompt=$('#record-ai-prompt').value.trim();if(!snapshot.destination){throw Error('先填写这次旅行的地点，再让助手整理。');}
+  const snapshot=c.getSnapshot(),prompt=$('#record-ai-prompt').value.trim();if(action!=='record_photos'&&!snapshot.destination){throw Error('先填写这次旅行的地点，再让助手整理。');}if(action==='record_photos'&&!snapshot.photos.length)throw Error('先上传或选择几张旅行照片。');
   const requestSignature=JSON.stringify([action,signature(snapshot),prompt]);if(c.submission?.signature!==requestSignature)c.submission={signature:requestSignature,key:key()};
   c.writing=true;controls(c);$('#record-ai-status').textContent='正在提交整理需求…';
   try{const d=await api(endpoint,{method:'POST',body:{action,prompt,record:snapshot,request_key:c.submission.key}});if(!here(c))return;c.submission=null;c.undo=null;c.applied=null;c.historyLoaded=false;
@@ -50,17 +55,21 @@ const RecordAssistant=(()=>{
   }finally{c.writing=false;controls(c);}
  }
  async function apply(c){if(c.writing||c.applied||!c.task?.proposal)return;if(TravelEditor.busy||c.uploading())throw Error('请等待照片上传或编辑器加载完成。');
-  if(!matches(c))throw Error('内容已更新，请按最新正文和照片重新整理。');const before=c.getSnapshot(),useMeta=$('#record-ai-meta').checked;
+  if(!matches(c))throw Error('内容已更新，请按最新正文和照片重新整理。');const before=c.getSnapshot(),useMeta=$('#record-ai-meta')?.checked,cover=c.getAlbumState().cover,overwrite=$('#record-ai-overwrite')?.checked;
   c.writing=true;c.form.inert=true;controls(c);
   try{const answer=await api(endpoint+'/'+c.task.id+'/preview',{method:'POST',body:{record:before}});if(!here(c))return;
    if(signature(c.getSnapshot())!==signature(before))throw Error('内容已更新，当前改动已保留，请重新整理。');
+   if(answer.proposal.photos){
+    const photos=cloneAdminData(before.photos);for(const p of answer.proposal.photos){const caption=(c.photoDrafts?.[p.index]??p.caption).trim();if(caption.length>200)throw Error('每张照片说明最多 200 字。');if(overwrite||!photos[p.index].caption.trim())photos[p.index].caption=caption;}
+    c.setPhotos(photos,cover);c.onChange();c.applied=c.task.id;c.undo={before,cover,photos:true,after:signature(c.getSnapshot()),afterCover:c.getAlbumState().cover};render(c);$('#record-save-note').textContent='照片说明已填入，尚未保存。';toast('已填入照片说明，请检查后保存');return;
+   }
    await TravelEditor.replace(answer.proposal.body,answer.proposal.html);if(!here(c))return;
    if(useMeta){c.form.elements.title.value=answer.proposal.title;c.form.elements.summary.value=answer.proposal.summary;}
    c.onChange();c.applied=c.task.id;c.undo={before,after:signature(c.getSnapshot())};render(c);$('#record-save-note').textContent='AI 整理已填入，尚未保存。';toast('已填入编辑器，请检查后保存');
   }finally{c.writing=false;c.form.inert=false;controls(c);}
  }
- async function undo(c){if(c.writing||!c.undo)return;if(TravelEditor.busy||c.uploading())throw Error('请等待编辑器或上传完成。');if(signature(c.getSnapshot())!==c.undo.after)throw Error('填入后已有新的修改，当前内容会保留。');
-  c.writing=true;c.form.inert=true;try{await TravelEditor.replace(c.undo.before.body);if(!here(c))return;c.form.elements.title.value=c.undo.before.title;c.form.elements.summary.value=c.undo.before.summary;c.undo=null;c.applied=null;c.onChange();render(c);toast('已撤销本次填入');}finally{c.writing=false;c.form.inert=false;controls(c);}
+ async function undo(c){if(c.writing||!c.undo)return;if(TravelEditor.busy||c.uploading())throw Error('请等待编辑器或上传完成。');if(signature(c.getSnapshot())!==c.undo.after||(c.undo.photos&&c.getAlbumState().cover!==c.undo.afterCover))throw Error('填入后已有新的修改，当前内容会保留。');
+  c.writing=true;c.form.inert=true;try{if(c.undo.photos){c.setPhotos(c.undo.before.photos,c.undo.cover);c.undo=null;c.applied=null;c.onChange();render(c);toast('已撤销照片说明');return;}await TravelEditor.replace(c.undo.before.body);if(!here(c))return;c.form.elements.title.value=c.undo.before.title;c.form.elements.summary.value=c.undo.before.summary;c.undo=null;c.applied=null;c.onChange();render(c);toast('已撤销本次填入');}finally{c.writing=false;c.form.inert=false;controls(c);}
  }
  document.addEventListener('click',async event=>{const node=event.target.closest('[data-record-ai]'),c=ctx;if(!node||!c||!here(c))return;try{const action=node.dataset.recordAi;
   if(action==='generate'||action==='polish')await submit(c,action==='generate'?'record_generate':'record_polish');
@@ -74,5 +83,6 @@ const RecordAssistant=(()=>{
  }catch(error){report(c,error);if(here(c)&&error.name!=='AbortError')toast(error.message,true);}});
  document.addEventListener('visibilitychange',()=>{const c=ctx;if(!c||!here(c))return;clearTimeout(c.timer);if(document.hidden){c.reader.abort();c.reader=new AbortController();}else if(c.panel.open&&active(c.task)){c.failures=0;refresh(c).catch(error=>report(c,error));}});
  window.addEventListener('pagehide',stop);
- return {panel,mount,stop,changed,get busy(){return !!ctx?.writing;},get appliedTask(){return ctx?.applied||null;}};
+ async function recognize(){const c=ctx;if(!c||!here(c))return;c.panel.open=true;if(active(c.task))throw Error('已有整理任务进行中，请等它完成或先停止。');await submit(c,'record_photos');if(here(c))c.panel.scrollIntoView({behavior:'smooth',block:'start'});}
+ return {panel,mount,stop,changed,signature,recognize,get busy(){return !!ctx?.writing;},get appliedTask(){return ctx?.applied||null;}};
 })();

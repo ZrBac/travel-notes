@@ -25,6 +25,7 @@ from database import connect
 from handbooks import HANDBOOK_CSP
 from performance import IMAGE_WIDTHS, prepare_image_variants, remove_image_variants, fingerprint, image_variant, image_variant_path, lazy_image, page_html
 from html_imports import ImportProblem, MAX_UPLOAD, STATIC_HANDBOOK_CSP, parse_upload
+from feature_photo_album import capture_facts, visual_facts
 
 BASE = Path(__file__).parent
 DATA = Path(os.environ.get('TRAVEL_DATA', '/var/lib/travel-notes'))
@@ -860,15 +861,18 @@ def upload():
             pixel_limit=MAX_JPEG_PIXELS if jpeg else 30_000_000
             if original.width*original.height>pixel_limit:
                 abort(400,description=f'照片分辨率超过 {pixel_limit//10000} 万像素，请缩小尺寸后上传')
+            photo_metadata=capture_facts(original)
             # Ask libjpeg to downsample while decoding, before EXIF transposition
             # or RGB copies allocate a full-size phone/camera image.
             if jpeg: original.draft('RGB',(2400,2400))
             original.thumbnail((2400,2400))
             with ImageOps.exif_transpose(original) as oriented, oriented.convert('RGB') as picture:
+                photo_metadata.update(visual_facts(picture))
+                # Web images never carry private capture time / GPS EXIF.
                 picture.save(path,'WEBP',quality=85)
                 width,height=picture.size
             prepare_image_variants(path)
-            db().execute('INSERT INTO media(filename,name,bytes,width,height) VALUES(%s,%s,%s,%s,%s)',(filename,(file.filename or filename)[:150],path.stat().st_size,width,height))
+            db().execute('INSERT INTO media(filename,name,bytes,width,height,photo_metadata) VALUES(%s,%s,%s,%s,%s,%s)',(filename,(file.filename or filename)[:150],path.stat().st_size,width,height,Jsonb(photo_metadata)))
             audit('media.upload',filename);db().commit()
     except (UnidentifiedImageError,OSError,Image.DecompressionBombError):
         remove_image_variants(path);path.unlink(missing_ok=True);abort(400,description='图片损坏或实际格式无法读取，请重新导出为 JPG/JPEG、PNG 或 WebP 后上传')
@@ -896,7 +900,7 @@ def media_reference_map(rows):
 
 @app.get('/api/admin/media')
 def admin_media():
-    rows=db().execute('SELECT * FROM media ORDER BY created_at DESC').fetchall()
+    rows=db().execute('SELECT filename,name,bytes,width,height,created_at,deleted_at FROM media ORDER BY created_at DESC').fetchall()
     references=media_reference_map(rows)
     for row in rows: row.update(url='/media/'+row['filename'],references=references['/media/'+row['filename']])
     defaults=[{'url':'/static/assets/'+p.name,'name':p.stem} for p in sorted((BASE/'static/assets').iterdir()) if re.fullmatch(r'[a-z]+\.(jpg|svg)',p.name)]
@@ -1041,4 +1045,7 @@ from trip_assistant_api import register as register_trip_assistant
 register_trip_assistant(app, db, payload, audit, render_markdown, validate_record)
 
 from record_assistant_api import register as register_record_assistant, saved_record as record_assistant_saved, link_saved as record_assistant_link
-register_record_assistant(app, db, payload, audit, render_markdown, validate_record)
+register_record_assistant(app, db, payload, audit, render_markdown, validate_record, DATA)
+
+from photo_album_api import register as register_photo_album
+register_photo_album(app, db, payload, validate_record, DATA)

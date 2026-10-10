@@ -6,13 +6,13 @@ import re
 from flask import abort, jsonify, request, session
 from psycopg.types.json import Jsonb
 
-ACTIONS = {'record_generate': '生成旅行足迹', 'record_polish': '润色旅行足迹'}
-SCOPE = "request->>'assistant'='travel' AND request->>'workflow' IN ('record_generate','record_polish') AND request->>'created_by'=%s"
+ACTIONS = {'record_generate': '生成旅行足迹', 'record_polish': '润色旅行足迹', 'record_photos': '识图并整理照片说明'}
+SCOPE = "request->>'assistant'='travel' AND request->>'workflow' IN ('record_generate','record_polish','record_photos') AND request->>'created_by'=%s"
 FIELDS = ('title', 'destination', 'start_date', 'end_date', 'summary', 'body', 'actual_cost', 'photos')
 MARKER = re.compile(r'\[\[(?:原图|相册)[^\]]*\]\]')
 
 
-def normalize_snapshot(raw, validate_record):
+def normalize_snapshot(raw, validate_record, allow_missing_destination=False):
     if not isinstance(raw, dict): abort(400, description='请先填写足迹内容')
     record_id, revision = raw.get('id'), raw.get('revision')
     if record_id is not None and (type(record_id) is not int or not 1 <= record_id < 2**63):
@@ -23,10 +23,13 @@ def normalize_snapshot(raw, validate_record):
     if not isinstance(title, str) or len(title) > 100: abort(400, description='标题最多 100 字')
     # Generating a title is part of this workflow. The regular save validator
     # still checks dates, destinations, every actual photo and inline image.
-    values = validate_record({**raw, 'title': title.strip() or '旅行回忆', 'status': 'private',
+    destination = raw.get('destination', '')
+    values = validate_record({**raw, 'destination': ('地点待补充' if allow_missing_destination and destination == '' else destination),
+                              'title': title.strip() or '旅行回忆', 'status': 'private',
                               'guide_id': None, 'guide_day': None, 'cover': None})
     result = {key: values[key] for key in FIELDS}
     result.update(id=record_id, revision=revision if record_id else None, title=title.strip())
+    if allow_missing_destination and destination == '': result['destination'] = ''
     result['photos'] = values['photos'].obj
     for field in ('start_date', 'end_date'):
         result[field] = values[field].isoformat() if values[field] else ''
@@ -41,7 +44,7 @@ def check_source(db, snapshot):
         abort(409, description='足迹已在其他页面更新，请保留当前内容，重新打开后再整理')
 
 
-def context_for(snapshot, render_markdown):
+def context_for(snapshot, render_markdown, metadata=None):
     images = []
     def protect(match):
         marker = '[[原图'+str(len(images)+1).zfill(2)+']]'
@@ -53,7 +56,8 @@ def context_for(snapshot, render_markdown):
     body = re.sub(r'/media/[a-f0-9]{32}\.webp(?:\?[^\s"<>]*)?', '[照片地址]', body)
     return {'record': {key: value for key, value in snapshot.items() if key not in ('photos', 'body')},
             'body': body, 'images': images,
-            'photos': [{'marker': '[[相册'+str(i+1).zfill(2)+']]', 'caption': photo['caption']}
+            'photos': [{'marker': '[[相册'+str(i+1).zfill(2)+']]', 'caption': photo['caption'],
+                        **({'taken_at': metadata.get(photo['url'], {}).get('taken_at', '')} if metadata is not None else {})}
                        for i, photo in enumerate(snapshot['photos'])]}
 
 
@@ -61,6 +65,27 @@ def proposal_for(row, render_markdown):
     result = row['report'].get('workflow_result')
     if row['status'] != 'done' or not isinstance(result, dict):
         abort(409, description='请等待足迹整理完成，再预览采用')
+    if row['request']['workflow'] == 'record_photos':
+        source = row['request']['record_snapshot']['photos']
+        photos = result.get('photos'); warnings = result.get('warnings', [])
+        if (not isinstance(photos, list) or len(photos) != len(source) or not isinstance(warnings, list)
+                or len(warnings) > 20 or any(not isinstance(w, str) or len(w) > 1000 for w in warnings)):
+            abort(409, description='识图结果不完整，请重试')
+        indexed = {}
+        for photo in photos:
+            if not isinstance(photo, dict): abort(409, description='照片说明格式不正确')
+            marker = photo.get('marker')
+            if not isinstance(marker, str) or marker in indexed: abort(409, description='照片对应关系不正确')
+            for field, limit in (('caption', 200), ('place_hint', 80), ('quality_note', 120)):
+                if not isinstance(photo.get(field), str) or len(photo[field]) > limit:
+                    abort(409, description='照片说明过长或不完整')
+            if not photo['caption'].strip() or photo.get('confidence') not in ('high','medium','low') or photo.get('subject') not in ('风景','美食','人文','合影','其他') or type(photo.get('highlight')) is not bool:
+                abort(409, description='照片识别信息不完整')
+            indexed[marker] = photo
+        expected = ['[[相册'+str(i+1).zfill(2)+']]' for i in range(len(source))]
+        if set(indexed) != set(expected): abort(409, description='识图结果遗漏或添加了照片')
+        return {'photos': [{**indexed[marker], 'index': i, 'url': source[i]['url'], 'original_caption': source[i]['caption']}
+                           for i, marker in enumerate(expected)], 'warnings': warnings}
     for key, limit in (('title', 100), ('summary', 300), ('body', 100000)):
         if not isinstance(result.get(key), str) or not result[key].strip() or len(result[key]) > limit:
             abort(409, description='整理结果不完整，请重新生成')
@@ -124,25 +149,28 @@ def link_saved(db, data, record_id):
     db().execute('UPDATE agent_tasks SET request=%s,updated_at=now() WHERE id=%s', (Jsonb(info), task_id))
 
 
-def register(app, db, payload, audit, render_markdown, validate_record):
+def register(app, db, payload, audit, render_markdown, validate_record, data_dir):
     @app.post('/api/admin/record-assistant/tasks')
     def record_assistant_submit():
         data = payload(); action = data.get('action'); prompt = data.get('prompt', '')
-        if not isinstance(action, str) or action not in ACTIONS: abort(400, description='请选择生成游记或润色正文')
+        if not isinstance(action, str) or action not in ACTIONS: abort(400, description='请选择识图、生成游记或润色正文')
         if not isinstance(prompt, str) or len(prompt) > 2000: abort(400, description='经历或修改要求最多 2000 字')
         prompt = prompt.strip(); key = data.get('request_key')
         if not isinstance(key, str) or not re.fullmatch('[a-f0-9]{32}', key): abort(400, description='提交标识不正确，请重试')
         db().execute('SELECT pg_advisory_xact_lock(74390511)')
         previous = db().execute('SELECT id FROM agent_tasks WHERE '+SCOPE+" AND request->>'request_key'=%s", (str(session['admin_id']), key)).fetchone()
         if previous: return jsonify(id=previous['id'], already_saved=True)
-        snapshot = normalize_snapshot(data.get('record'), validate_record); check_source(db, snapshot)
-        context = context_for(snapshot, render_markdown)
+        snapshot = normalize_snapshot(data.get('record'), validate_record, allow_missing_destination=action == 'record_photos'); check_source(db, snapshot)
+        from photo_album_api import metadata_for
+        metadata = metadata_for(db, snapshot['photos'], data_dir)
+        context = context_for(snapshot, render_markdown, metadata)
         # A photo count alone is not evidence of an experience. A few actual
         # words or captions are enough, without requiring a separate trip.
         text = re.sub('<[^>]+>', '', context['body'])
         text = MARKER.sub('', text).strip()
         if action == 'record_polish' and not text: abort(400, description='请先写一点正文，再润色；也可以选择生成游记')
-        if not (text or snapshot['summary'] or prompt or any(p['caption'] for p in snapshot['photos'])):
+        if action == 'record_photos' and not snapshot['photos']: abort(400, description='先上传或选择几张旅行照片，再识图')
+        if action != 'record_photos' and not (text or snapshot['summary'] or prompt or any(p['caption'] for p in snapshot['photos'])):
             abort(400, description='写几句真实经历，或给照片加一句说明，再让助手整理')
         service = db().execute("SELECT value FROM settings WHERE key='agent_service'").fetchone()
         info = service['value'] if service else {}
@@ -183,7 +211,7 @@ def register(app, db, payload, audit, render_markdown, validate_record):
 
     @app.post('/api/admin/record-assistant/tasks/<int:task_id>/preview')
     def record_assistant_preview(task_id):
-        row = task_for(db, task_id); snapshot = normalize_snapshot(payload().get('record'), validate_record)
+        row = task_for(db, task_id); snapshot = normalize_snapshot(payload().get('record'), validate_record, allow_missing_destination=row['request']['workflow'] == 'record_photos')
         check_source(db, snapshot)
         if snapshot != row['request']['record_snapshot']:
             abort(409, description='生成后正文、日期或照片有更新，请按最新内容重新整理；当前改动会保留')

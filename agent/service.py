@@ -18,6 +18,8 @@ from artifacts import copy_code, manifest, fingerprint, compare, replace
 import travel_planner
 import trip_workflows
 import record_workflows
+import photo_workflows
+import photo_inputs
 from guide_visuals import compose
 import uuid
 import stat
@@ -133,7 +135,7 @@ def launch(unit,user,cwd,args,log,writable,testing=False,input_path=None,memory=
 
 def workflow_module(task):
     action=task['request'].get('workflow')
-    return record_workflows if action in record_workflows.ACTIONS else trip_workflows if action in trip_workflows.ACTIONS else None
+    return photo_workflows if action in photo_workflows.ACTIONS else record_workflows if action in record_workflows.ACTIONS else trip_workflows if action in trip_workflows.ACTIONS else None
 
 
 def prompt_for(task,work,resume_note='从当前正式代码创建开发副本。'):
@@ -182,6 +184,7 @@ def begin_locked(task):
         handler=workflow_module(task)
         schema=handler.output_schema(task) if handler else travel_planner.OUTPUT_SCHEMA
         (work/'response-schema.json').write_text(json.dumps(schema))
+        image_paths=photo_inputs.prepare(task,UPLOADS,work)
     else:
         copy_code(LIVE,baseline);copy_code(baseline,work)
     resume_note='从当前正式代码创建开发副本。'
@@ -202,9 +205,13 @@ def begin_locked(task):
           'exec','--ignore-user-config','--ignore-rules','--sandbox','workspace-write' if task['kind']=='change' else 'read-only',
           '--skip-git-repo-check','--ephemeral','--json','-']
     if travel:
-        args[1:1]=['-c','web_search="live"','--disable','shell_tool','--disable','apps','--disable','multi_agent']
+        args[1:1]=['-c','web_search="disabled"' if image_paths else 'web_search="live"','--disable','shell_tool','--disable','apps','--disable','multi_agent']
         args[-1:-1]=['--output-schema',str(work/'response-schema.json')]
-    update(task_id,'running',('正在整理旅行足迹。' if task['request'].get('workflow') in record_workflows.ACTIONS else '正在检索目的地资料并规划行程。') if travel else '正在读取项目并执行任务。')
+        # Repeat image flags and put the stdin prompt after '--'; variadic -i
+        # must not consume the '-' prompt as an image path.
+        for image_path in image_paths: args[-1:-1]=['--image',str(image_path)]
+        if image_paths: args[-1:-1]=['--']
+    update(task_id,'running',('正在识别照片画面。' if image_paths else '正在整理旅行足迹。' if task['request'].get('workflow') in record_workflows.ACTIONS else '正在检索目的地资料并规划行程。') if travel else '正在读取项目并执行任务。')
     proc=launch(unit,'travelagent',work,args,root/'model.log',[work,HOME/'.codex'],input_path=root/'prompt.txt',memory=640 if travel else 900,cpu=70 if travel else 100)
     return {'task':task,'phase':'model','process':proc,'unit':unit,'root':root,'work':work,'started':time.time(),
             'task_started':time.time(),'last_save':0,'result':'','resume_note':resume_note,'repair_attempt':0}
@@ -329,13 +336,14 @@ def finish_step(active):
         travel=travel_planner.is_travel(task)
         active['execution']=data.get('execution',{})
         if time.time()-active['last_save']>3:
-            message={'adjust_day':'正在结合当前路线调整所选日期。','check_departure':'正在核对出发准备与官方信息。','recap':'正在根据真实随记整理旅行回忆。','preferences':'正在根据真实随记总结偏好建议。','record_generate':'正在根据真实经历和照片说明整理游记。','record_polish':'正在润色已有游记，保留原有照片和真实细节。'}.get(task['request'].get('workflow'),'正在检索资料并整理完整攻略，请稍候。')
+            message={'adjust_day':'正在结合当前路线调整所选日期。','check_departure':'正在核对出发准备与官方信息。','recap':'正在根据真实随记整理旅行回忆。','preferences':'正在根据真实随记总结偏好建议。','record_generate':'正在根据真实经历和照片说明整理游记。','record_polish':'正在润色已有游记，保留原有照片和真实细节。','record_photos':'正在查看实际照片，整理画面说明和选图建议。'}.get(task['request'].get('workflow'),'正在检索资料并整理完整攻略，请稍候。')
             update(task_id,result=(message if travel else data['result'] or '正在执行任务…'),
                    report={**execution_report(active,data['usage']),'progress':data['progress'],'web_search_count':data['web_search_count'],
                            'outcome':'repairing' if active.get('repair_attempt') else 'working'})
             active['last_save']=time.time()
         if process.poll() is None: return False
         stop_unit(active['unit'])
+        if task['request'].get('workflow') in photo_workflows.ACTIONS: photo_inputs.cleanup(active['work'])
         if process.returncode or not data['completed']:
             message='\n'.join(data['errors']) or safe_text(model_log.read_text(errors='replace')[-1500:])
             update(task_id,'failed',data['result']+'\n任务未完成：'+message,{**execution_report(active,data['usage']),'reason':message,'publishable':False});return True
@@ -583,8 +591,9 @@ def main():
     with (PRIVATE/'service.lock').open('a') as singleton:
         fcntl.flock(singleton,fcntl.LOCK_EX|fcntl.LOCK_NB)
         recover_release()
-        for row in read("SELECT id FROM agent_tasks WHERE status IN ('running','testing','publishing')"):
+        for row in read("SELECT id,request FROM agent_tasks WHERE status IN ('running','testing','publishing')"):
             for kind in ('model','tests','photos'):stop_unit(f'travel-agent-{kind}-{row["id"]}')
+            if row['request'].get('workflow') in photo_workflows.ACTIONS: photo_inputs.cleanup(WORK/str(row['id']))
             update(row['id'],'failed','服务重启，未完成任务已停止；可重新提交。')
         active={};last_heartbeat=0;last_cleanup=0
         while not STOP or active:
