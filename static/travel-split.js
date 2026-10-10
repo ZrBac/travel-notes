@@ -21,6 +21,11 @@ const TravelSplit=(()=>{
   }catch{storageWarning='上次保存的内容暂时无法读取。修改前不会覆盖旧内容。';}
   if(!draft)draft=fresh();
   draft=TravelSplitMath.asPublic(draft);
+  // Replace only the untouched old three-category form; entered items stay separate.
+  const oldNames=['吃饭','市内交通','门票和游玩'];
+  if(draft.expenses.length===3&&draft.expenses.every((e,i)=>(e.name===oldNames[i]||(i===1&&e.name==='交通'))&&Number(e.price)===0&&Number(e.upper)===0&&String(e.quantity)==='1'&&!e.perPerson&&e.participants.length===draft.members.length&&draft.members.every(m=>e.participants.includes(m.id)))){
+   draft.expenses=[{...fresh().expenses[0],participants:draft.members.map(m=>m.id)}];
+  }
   // Shared items keep their amounts and participants; personal items are archived.
   for(const e of draft.expenses)if(typeof e.upperAuto!=='boolean')e.upperAuto=Number(e.upper)===Number(e.price);
  }
@@ -41,10 +46,14 @@ const TravelSplit=(()=>{
   return `<details id="split-group-settings" class="split-details"><summary>更改人数和额度</summary><div class="split-group-fields">${input('总共几个人','data-group="people"',draft.members.length,'type="number" min="1" max="50" step="1" inputmode="numeric"')}${input('其中几个人有额度','data-group="funded"',funded.length,'type="number" min="0" max="50" step="1" inputmode="numeric"')}${number('有额度的人，每人能报多少 / 元','data-group="cap"',caps.length===1?caps[0]:'','placeholder="例如 1500"')}</div>${caps.length>1?'<p class="split-help">当前成员的额度不同，可以在下面逐人调整；使用此处更新会将有额度的成员统一为同一金额。</p>':''}<p id="split-group-error" class="split-error" role="alert" hidden></p><button class="button secondary small" type="button" data-split="apply-group">更新人数与额度</button><details id="split-member-settings" class="split-details"><summary>逐人调整姓名或特殊额度</summary><div class="split-members">${members()}</div><button class="button secondary small" type="button" data-split="add-member">＋ 添加成员</button></details></details>`;
  }
  function expenseRows(){
-  return draft.expenses.map(e=>{
-   const label=e.perPerson?'每人每次多少钱 / 元':e.quantity==='1'?'大家合计花多少钱 / 元':'每次合计多少钱 / 元';
-   return `<article class="split-expense" data-expense="${esc(e.id)}"><div class="split-expense-head"><h3 data-expense-title>${esc(e.name)}</h3><span class="split-expense-badge" data-expense-badge></span></div><div class="split-quick-cost">${number(label,'data-expense-field="price"',valueOrEmpty(e.price),'placeholder="没花钱可以不填"')}</div><p class="split-help split-cost-note" data-cost-note></p><details class="split-expense-details split-details"><summary>详细设置</summary><div class="split-detail-fields">${number('最高预算 / 元（与上面的金额口径一致）','data-expense-field="upper"',e.upperAuto?'':e.upper,'placeholder="不填就按上面的金额计算"')}${input('费用名称','data-expense-field="name"',e.name,'maxlength="80" required')}<label>填的是哪种金额<select data-expense-field="perPerson"><option value="true" ${e.perPerson?'selected':''}>每个人的金额</option><option value="false" ${!e.perPerson?'selected':''}>所有参与者的总金额</option></select></label>${input('要花几次','data-expense-field="quantity"',e.quantity,'type="number" min="1" max="365" step="1" inputmode="numeric"')}</div><p class="split-help">谁参加这项费用？默认所有人一起分摊。</p><div class="split-participants">${draft.members.map(m=>`<label class="split-check"><input type="checkbox" data-participant="${esc(m.id)}" ${e.participants.includes(m.id)?'checked':''}><span data-person-label="${esc(m.id)}">${esc(m.name)}</span></label>`).join('')}</div><button type="button" class="split-remove" data-split="remove-expense">删除这项费用</button></details></article>`;
-  }).join('')||'<p class="split-help">添加一笔费用，就能开始计算。</p>';
+  return draft.expenses.map((e,i)=>{
+   const label=e.perPerson?'每人每次金额 / 元':String(e.quantity)==='1'?'合计金额 / 元':'每次合计金额 / 元';
+   return `<article class="split-expense" data-expense="${esc(e.id)}" aria-label="第 ${i+1} 笔费用"><div class="split-entry-fields">${input('费用名称','data-expense-field="name"',e.name,'maxlength="80" required placeholder="例如：周五晚餐"')}<div class="split-quick-cost">${number(label,'data-expense-field="price"',valueOrEmpty(e.price),'placeholder="0.00"')}</div></div><p class="split-help split-cost-note" data-cost-note></p><div class="split-expense-controls"><details class="split-expense-details split-details"><summary>预算和参与人</summary><div class="split-detail-fields">${number('最高预算 / 元（与上面的金额口径一致）','data-expense-field="upper"',e.upperAuto?'':e.upper,'placeholder="不填就按上面的金额计算"')}<label>填的是哪种金额<select data-expense-field="perPerson"><option value="true" ${e.perPerson?'selected':''}>每个人的金额</option><option value="false" ${!e.perPerson?'selected':''}>所有参与者的总金额</option></select></label>${input('要花几次','data-expense-field="quantity"',e.quantity,'type="number" min="1" max="365" step="1" inputmode="numeric"')}</div><p class="split-help">谁参加这项费用？默认所有人一起分摊。</p><div class="split-participants">${draft.members.map(m=>`<label class="split-check"><input type="checkbox" data-participant="${esc(m.id)}" ${e.participants.includes(m.id)?'checked':''}><span data-person-label="${esc(m.id)}">${esc(m.name)}</span></label>`).join('')}</div></details><button type="button" class="split-remove" data-split="remove-expense" aria-label="移除第 ${i+1} 笔费用">移除</button></div></article>`;
+  }).join('')||'<p class="split-help">点击「新增费用」开始记录。</p>';
+ }
+ function listTotal(r){
+  $('#split-expense-total').textContent=r?yuan(r.expected.total):'—';
+  $('#split-expense-maximum').textContent=r?(r.worst.total!==r.expected.total?'最高预算 '+yuan(r.worst.total):''): '请完善费用和报销信息后查看合计';
  }
  function personalArchive(){
   const rows=draft.personalExpenses||[];if(!rows.length)return '';
@@ -57,7 +66,7 @@ const TravelSplit=(()=>{
  function mount(){
   const openIds=[...document.querySelectorAll('.split-tool details[id][open]')].map(n=>n.id);
   load();updateShell('split');document.title='费用分摊 · '+(state.site?.site_name||'行笺');
-  $('#app').innerHTML=`<div class="split-tool">${heading('公共费用，每人还要掏多少？','机票报销款一起共享，吃饭、交通、游玩费用在这里分摊。','费用分摊')}<form id="split-form" novalidate><section class="split-panel split-group-panel"><h2>一起出游的人</h2><p id="split-capacity" class="split-group-summary"></p>${groupFields()}</section><section class="split-panel"><div class="split-section-head"><h2>大家一起花的钱</h2><button type="button" class="split-demo-link" data-split="demo">不会填？试试示例</button></div><p class="split-help">填写聚餐、包车、市内交通、门票等公共费用的合计。个人机票和单住酒店自行承担，不计入这里。</p><div id="split-expenses">${expenseRows()}</div><button type="button" class="button secondary small" data-split="add-expense">＋ 其他费用</button></section><section class="split-panel"><h2>可共享的机票报销款</h2>${number('用于大家一起分摊的报销款 / 元','data-setting="conservativeClaim"',draft.conservativeClaim,'placeholder="拿不准时填 0"')}<p class="split-help">已按机票足额报销设置为 9,000 元。即使聚餐和游玩本身不能报销，也会用这笔共享款抵扣公共费用。</p><details id="split-claim-settings" class="split-details"><summary>调整预计报销金额</summary>${number('正常情况下预计能报多少 / 元','data-setting="expectedClaim"',draft.expectedClaim)}<p class="split-help">默认预计和保守计算都使用 9,000 元，受成员总额度限制。保守金额不能高于预计金额。</p></details></section></form><section id="split-results" tabindex="-1"><div id="split-error" class="split-error" role="alert" hidden></div><div id="split-output"></div></section>${personalArchive()}<div class="split-bottom"><button type="button" class="split-remove" data-split="reset">清空重新算</button><p id="split-storage" class="split-storage" role="status"></p></div></div>`;
+  $('#app').innerHTML=`<div class="split-tool">${heading('公共费用，每人还要掏多少？','机票报销款一起共享，吃饭、交通、游玩费用在这里分摊。','费用分摊')}<form id="split-form" novalidate><section class="split-panel split-group-panel"><h2>一起出游的人</h2><p id="split-capacity" class="split-group-summary"></p>${groupFields()}</section><section class="split-panel"><div class="split-section-head"><h2>公共费用清单</h2><button type="button" class="split-demo-link" data-split="demo">不会填？试试示例</button></div><p class="split-help">每笔填名称和合计金额，例如晚餐、包车、门票。个人机票和酒店不计入这里。</p><div id="split-expenses">${expenseRows()}</div><div class="split-expenses-footer"><button type="button" class="button secondary small" data-split="add-expense">＋ 新增费用</button><div class="split-list-total" aria-live="polite" aria-atomic="true"><span>公共费用合计</span><strong id="split-expense-total">¥0.00</strong><small id="split-expense-maximum"></small></div></div></section><section class="split-panel"><h2>可共享的机票报销款</h2>${number('用于大家一起分摊的报销款 / 元','data-setting="conservativeClaim"',draft.conservativeClaim,'placeholder="拿不准时填 0"')}<p class="split-help">默认按机票足额报销填写 9,000 元，可修改。即使聚餐和游玩本身不能报销，也会用这笔共享款抵扣公共费用。</p><details id="split-claim-settings" class="split-details"><summary>调整预计报销金额</summary>${number('正常情况下预计能报多少 / 元','data-setting="expectedClaim"',draft.expectedClaim)}<p class="split-help">默认预计和保守计算都使用 9,000 元，受成员总额度限制。保守金额不能高于预计金额。</p></details></section></form><section id="split-results" tabindex="-1"><div id="split-error" class="split-error" role="alert" hidden></div><div id="split-output"></div></section>${personalArchive()}<div class="split-bottom"><button type="button" class="split-remove" data-split="reset">清空重新算</button><p id="split-storage" class="split-storage" role="status"></p></div></div>`;
   for(const id of openIds)if($('#'+id))$('#'+id).open=true;
   const root=$('.split-tool');root.addEventListener('input',edit);root.addEventListener('change',event=>{if(event.target.matches('select,input[type=checkbox]'))edit(event);});root.addEventListener('click',click);
   $('#split-form').addEventListener('submit',event=>event.preventDefault());storageStatus();calculate();
@@ -72,7 +81,6 @@ const TravelSplit=(()=>{
    if(field==='upper'){e.upperAuto=node.value==='';e.upper=e.upperAuto?e.price:node.value;}
    else if(field==='price'){e.price=amount(node.value);if(e.upperAuto)e.upper=e.price;}
    else e[field]=field==='eligible'?node.checked:field==='perPerson'?node.value==='true':node.value;
-   if(field==='name')erow.querySelector('[data-expense-title]').textContent=node.value;
    if(field==='perPerson'){
     const id=e.id;persist();mount();const updated=[...document.querySelectorAll('[data-expense]')].find(row=>row.dataset.expense===id);updated.querySelector('details').open=true;return;
    }
@@ -88,7 +96,6 @@ const TravelSplit=(()=>{
   }catch{$('#split-capacity').textContent='请检查成员的报销额度。';}
   for(const row of document.querySelectorAll('[data-expense]')){
    const e=draft.expenses.find(e=>e.id===row.dataset.expense);
-   row.querySelector('[data-expense-badge]').textContent='公共费用';
    try{
     const price=TravelSplitMath.money(e.price),total=price*Number(e.quantity)*(e.perPerson?e.participants.length:1);
     row.querySelector('[data-cost-note]').textContent=(e.perPerson?`${e.participants.length} 人 × ${e.quantity} 次`:`${e.participants.length} 人分摊${Number(e.quantity)>1?'，共 '+e.quantity+' 次':''}`)+`，合计 ${yuan(total)}`+(e.upperAuto?'':'（已另设最高预算）');
@@ -99,12 +106,12 @@ const TravelSplit=(()=>{
   summaries();const error=$('#split-error'),output=$('#split-output');result=null;
   const openIds=[...output.querySelectorAll('details[id][open]')].map(n=>n.id);
   try{
-   result=TravelSplitMath.calculate(draft);error.hidden=true;const r=result,average=s=>yuan(Math.round(s.ownTotal/r.members.length));
-   if(r.none.total===0){output.innerHTML='<div class="split-empty"><h2>填一笔费用，就能看到结果</h2><p>例如吃饭填 5400、交通填 2700、游玩填 2700，就会自动减去 9,000 元报销款再分摊。</p></div>';return;}
+   result=TravelSplitMath.calculate(draft);listTotal(result);error.hidden=true;const r=result,average=s=>yuan(Math.round(s.ownTotal/r.members.length));
+   if(r.none.total===0){output.innerHTML='<div class="split-empty"><h2>填一笔费用，就能看到结果</h2><p>每笔填名称和金额，清单会自动加总，再用共享报销款抵扣并分摊。</p></div>';return;}
    const sameExpected=new Set(r.expected.net).size===1,sameWorst=new Set(r.worst.net).size===1;
    output.innerHTML=`<div class="split-summary"><div class="split-stat"><span>${sameExpected?'公共费用 · 预计每人自付':'公共费用 · 预计平均每人自付'}</span><strong>${average(r.expected)}</strong><small>总费用 ${yuan(r.expected.total)}<br>共享款抵扣 ${yuan(r.expected.applied)}</small></div><div class="split-stat is-worst"><span>${sameWorst?'公共费用 · 每人最多准备':'公共费用 · 有人最多需要准备'}</span><strong>${yuan(r.worst.maxPerson)}</strong><small>费用按最高预算算<br>共享款抵扣 ${yuan(r.worst.applied)}</small></div></div>${r.expected.remaining||r.worst.remaining?`<p class="split-remainder" role="status">预计剩余共享报销款 <strong>${yuan(r.expected.remaining)}</strong>；按最高预算花费后剩余 <strong>${yuan(r.worst.remaining)}</strong>。剩余款单独列出，供大家另行分配。</p>`:''}<p class="split-result-note">这里只计算公共费用。报销到账前仍可能需要先垫付；结果未扣除个人垫付款。超预算或报销不足时，需要准备更多。</p><details id="split-person-results" class="split-details split-panel"><summary>看看每个人分别掏多少</summary><div class="split-table-wrap"><table class="split-table split-person-table"><thead><tr><th>成员</th><th>预计自付</th><th>最多准备</th></tr></thead><tbody>${r.members.map((m,i)=>`<tr><th>${esc(m.name)}</th><td>${yuan(r.expected.net[i])}</td><td><strong>${yuan(r.worst.net[i])}</strong></td></tr>`).join('')}</tbody><tfoot><tr><th>合计</th><td>${yuan(r.expected.ownTotal)}</td><td>${yuan(r.worst.ownTotal)}</td></tr></tfoot></table></div></details><details id="split-calculation-details" class="split-details split-panel"><summary>查看费用明细与计算说明</summary><div class="split-table-wrap"><table class="split-table split-cost-table"><thead><tr><th>费用</th><th>预计总额</th><th>最高预算</th></tr></thead><tbody>${r.expenses.map(e=>`<tr><th>${esc(e.name)}</th><td>${yuan(e.expected)}</td><td>${yuan(e.maximum)}</td></tr>`).join('')}</tbody></table></div><p class="split-help">共享报销取成员总额度和填写到账金额中的较小值，来源为机票，不要求公共费用本身可以报销。最多准备的金额按公共费用最高预算减去共享款计算。</p><p class="split-help">报销抵扣由所有人均享，每人最多抵扣自己的费用；剩余再分给其他人，精确到分。谁参加了哪些项目，就分摊哪些项目。</p><p class="split-help">如果完全没报下来，最高预算下有人最多需要 ${yuan(r.none.maxPerson)}。</p></details>${r.expected.reimbursement<r.planned||r.worst.reimbursement<r.conservative?'<p class="split-limit-note">填写的共享报销款超过了成员总额度，已按额度上限计算。</p>':''}<div class="split-result-actions"><button type="button" class="button secondary" data-split="export">导出结果</button></div>`;
    for(const id of openIds)if($('#'+id))$('#'+id).open=true;
-  }catch(err){error.hidden=false;error.textContent=err.message.replaceAll('保守报销总额','至少能报下来的金额').replaceAll('预计报销总额','预计报销金额').replaceAll('单价上限','最高预算').replaceAll('预计单价','填写金额');output.innerHTML='';}
+  }catch(err){listTotal(null);error.hidden=false;error.textContent=err.message.replaceAll('保守报销总额','至少能报下来的金额').replaceAll('预计报销总额','预计报销金额').replaceAll('单价上限','最高预算').replaceAll('预计单价','填写金额');output.innerHTML='';}
  }
  function report(){
   const r=result;
@@ -145,7 +152,7 @@ const TravelSplit=(()=>{
    draft.members=draft.members.filter(m=>m.id!==id);for(const e of draft.expenses)e.participants=e.participants.filter(p=>p!==id);
   }else if(action==='add-expense'){
    if(draft.expenses.length>=200){toast('最多支持 200 项费用',true);return;}
-   draft.expenses.push({id:uid('e'),name:'其他费用',price:'0',upper:'0',upperAuto:true,quantity:'1',perPerson:false,eligible:false,participants:draft.members.map(m=>m.id)});
+   draft.expenses.push({id:uid('e'),name:'公共费用',price:'0',upper:'0',upperAuto:true,quantity:'1',perPerson:false,eligible:false,participants:draft.members.map(m=>m.id)});
   }else if(action==='remove-expense'){
    if(!confirm('删除这项费用？'))return;draft.expenses=draft.expenses.filter(e=>e.id!==node.closest('[data-expense]').dataset.expense);
   }else if(action==='demo'||action==='reset'){
@@ -157,7 +164,7 @@ const TravelSplit=(()=>{
   }else return;
   persist();mount();
   if(action==='add-member'){$('#split-group-settings').open=true;$('#split-member-settings').open=true;$('.split-member:last-child input').focus();}
-  if(action==='add-expense')$('.split-expense:last-child input').focus();
+  if(action==='add-expense'){const name=$('.split-expense:last-child [data-expense-field=name]');name.focus();name.select();}
  }
  return {mount};
 })();

@@ -55,11 +55,11 @@ const TravelSplitMath=(()=>{
  }
  function blank(){
   const members=Array.from({length:9},(_,i)=>({id:'p'+(i+1),name:'成员 '+(i+1),cap:i<6?'1500':'0'}));
-  return {version:1,simpleForm:true,reimbursementSource:'external',members,expectedClaim:'9000',conservativeClaim:'9000',expenses:['吃饭','市内交通','门票和游玩'].map((name,i)=>({id:'e'+(i+1),name,price:'0',upper:'0',quantity:'1',perPerson:false,eligible:false,participants:members.map(m=>m.id)}))};
+  return {version:1,simpleForm:true,reimbursementSource:'external',members,expectedClaim:'9000',conservativeClaim:'9000',expenses:[{id:'e1',name:'公共费用',price:'0',upper:'0',quantity:'1',perPerson:false,eligible:false,participants:members.map(m=>m.id)}]};
  }
  function demo(){
   const data=blank();
-  data.expenses.forEach((e,i)=>{e.price=['5400','2700','2700'][i];e.upper=['6300','3600','3600'][i];});
+  data.expenses=['聚餐','包车','景点门票'].map((name,i)=>({...data.expenses[0],id:'e'+(i+1),name,price:['5400','2700','2700'][i],upper:['6300','3600','3600'][i],participants:[...data.expenses[0].participants]}));
   return data;
  }
  function asPublic(data){
