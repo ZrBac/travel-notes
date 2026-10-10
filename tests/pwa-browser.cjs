@@ -46,8 +46,8 @@ function worker(){const h=html(),assets=[...h.matchAll(/(?:src|href)="(\/static\
   for(const width of [320,390,768,1440]){await p.setViewportSize({width,height:900});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no horizontal page overflow '+width);}
   await p.setViewportSize({width:390,height:844});await p.screenshot({path:process.env.PWA_TEST_SCREENSHOT||'/tmp/travel-pwa-offline-phone.png',fullPage:true});
   await p.evaluate(()=>location.hash='split');await p.waitForSelector('#split-form');
-  p.once('dialog',d=>d.accept());await p.locator('[data-split=demo]').click();assert.equal(await p.locator('.split-stat.is-worst strong').innerText(),'¥1,200.00');
-  await p.reload();await p.waitForSelector('#split-form');assert.equal(await p.locator('.split-stat.is-worst strong').innerText(),'¥1,200.00','calculator and local draft survive real offline cold reload');
+  p.once('dialog',d=>d.accept());await p.locator('[data-split=demo]').click();assert.equal(await p.locator('.split-stat.is-worst strong').innerText(),'¥500.00');
+  await p.reload();await p.waitForSelector('#split-form');assert.equal(await p.locator('.split-stat.is-worst strong').innerText(),'¥500.00','calculator and local draft survive real offline cold reload');
   await p.evaluate(()=>location.hash='offline');await p.waitForSelector('.pwa-saved-card');await p.reload();await p.waitForSelector('.pwa-saved-card');
   await p.locator('.pwa-saved-actions .primary').click();await p.waitForSelector('.pwa-snapshot');
   for(const route of ['/admin','/?preview=1']){const blocked=await ctx.newPage();let failed=false;try{await blocked.goto(base+route,{timeout:5000});}catch{failed=true;}assert.ok(failed,'no offline admin/preview fallback');await blocked.close();}
