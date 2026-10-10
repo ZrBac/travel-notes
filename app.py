@@ -875,7 +875,8 @@ def media_refs(filename):
     guides=db().execute("SELECT id,title,deleted_at,'guide' AS kind FROM guides WHERE cover=%s OR position(%s in body)>0 ORDER BY id",(url,url)).fetchall()
     records=db().execute("SELECT id,title,deleted_at,'record' AS kind FROM travel_records WHERE cover=%s OR position(%s in body)>0 OR photos @> %s ORDER BY id",(url,url,Jsonb([{'url':url}]))).fetchall()
     tasks=db().execute("SELECT id,'旅游助手 · ' || coalesce(report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind FROM agent_tasks WHERE request->>'assistant'='travel' AND position(%s in coalesce(report->'travel_guide'->>'body',''))>0 ORDER BY id",(url,)).fetchall()
-    return guides+records+tasks
+    trips=db().execute("SELECT DISTINCT t.id,t.title,NULL AS deleted_at,'trip' AS kind FROM trips t JOIN trip_plans p ON p.trip_id=t.id WHERE position(%s in coalesce(p.snapshot->>'reference_body',''))>0 ORDER BY t.id",(url,)).fetchall()
+    return guides+records+tasks+trips
 
 def media_reference_map(rows):
     # Scan each content body once, rather than once for every image.
@@ -883,7 +884,7 @@ def media_reference_map(rows):
     queries=[
         r"SELECT g.id,g.title,g.deleted_at,'guide' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT g.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(g.body,'/media/([a-f0-9]{32}\.webp)','g') m) links) AS urls FROM guides g ORDER BY g.id",
         r"SELECT r.id,r.title,r.deleted_at,'record' AS kind,ARRAY(SELECT DISTINCT url FROM (SELECT r.cover AS url UNION ALL SELECT '/media/'||m[1] FROM regexp_matches(r.body,'/media/([a-f0-9]{32}\.webp)','g') m UNION ALL SELECT photo->>'url' FROM jsonb_array_elements(r.photos) photo) links) AS urls FROM travel_records r ORDER BY r.id",
-        r"SELECT t.id,'旅游助手 · '||coalesce(t.report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.report->'travel_guide'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' ORDER BY t.id",
+        r"SELECT t.id,'旅游助手 · '||coalesce(t.report->'travel_guide'->>'title','攻略') AS title,NULL AS deleted_at,'travel-agent' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM regexp_matches(coalesce(t.report->'travel_guide'->>'body',''),'/media/([a-f0-9]{32}\.webp)','g') m) AS urls FROM agent_tasks t WHERE t.request->>'assistant'='travel' UNION ALL SELECT t.id,t.title,NULL AS deleted_at,'trip' AS kind,ARRAY(SELECT DISTINCT '/media/'||m[1] FROM trip_plans p CROSS JOIN LATERAL regexp_matches(coalesce(p.snapshot->>'reference_body',''),'/media/([a-f0-9]{32}\.webp)','g') m WHERE p.trip_id=t.id) AS urls FROM trips t ORDER BY id",
     ]
     if rows:
         for query in queries:
@@ -1000,7 +1001,7 @@ def overview():
     recent=db().execute('SELECT * FROM guides WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5').fetchall()
     last=db().execute("SELECT value FROM settings WHERE key='last_backup'").fetchone()
     records=db().execute("SELECT count(*) FILTER(WHERE deleted_at IS NULL) AS total,count(*) FILTER(WHERE deleted_at IS NULL AND status='public') AS public FROM travel_records").fetchone()
-    return jsonify(counts=counts,records=records,media=assets,recent=[serialize(r) for r in recent],database='PostgreSQL',backup=last['value'] if last else None)
+    return jsonify(counts=counts,records=records,media=assets,recent=[serialize(r) for r in recent],database='PostgreSQL',trip=trip_overview(db),backup=last['value'] if last else None)
 
 @app.get('/api/admin/audit')
 def logs():
@@ -1014,7 +1015,9 @@ def logs():
 def export():
     rows=db().execute('SELECT * FROM guides ORDER BY id').fetchall()
     data={'format':'travel-notes-export-v2','exported_at':now().isoformat(),'guides':rows,'records':db().execute('SELECT * FROM travel_records ORDER BY id').fetchall(),
-        'categories':db().execute('SELECT * FROM categories ORDER BY id').fetchall(),'settings':site_settings()}
+        'categories':db().execute('SELECT * FROM categories ORDER BY id').fetchall(),'settings':site_settings(),
+        'trips':db().execute('SELECT * FROM trips ORDER BY id').fetchall(),
+        'trip_plans':db().execute('SELECT * FROM trip_plans ORDER BY trip_id,version').fetchall()}
     audit('data.export',details={'count':len(rows)});db().commit()
     content=json.dumps(data,ensure_ascii=False,indent=2,default=lambda d:d.isoformat()).encode()
     return send_file(io.BytesIO(content),mimetype='application/json',as_attachment=True,download_name='travel-notes-'+date.today().isoformat()+'.json')
@@ -1027,3 +1030,6 @@ register_travel_planner(app, db, payload, audit, render_markdown, validate, sync
 
 from task_management import register as register_task_management
 register_task_management(app, db, payload, audit)
+
+from trip_api import register as register_trips, overview as trip_overview
+register_trips(app, db, payload, audit, render_markdown)
