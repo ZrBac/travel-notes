@@ -263,6 +263,7 @@ def delete_admin_account(account_id):
     if db().execute('SELECT count(*) AS n FROM admins').fetchone()['n']<=1:
         abort(409,description='至少需要保留一个管理员')
     db().execute('DELETE FROM admins WHERE id=%s',(account_id,))
+    db().execute('DELETE FROM settings WHERE key=%s',('travel_family_preferences:'+str(account_id),))
     audit('account.delete',account_id,{'username':target['username']})
     db().commit()
     return jsonify(ok=True)

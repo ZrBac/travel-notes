@@ -1,6 +1,6 @@
 """Private travel research tasks, using the existing durable agent queue."""
 from datetime import datetime, timezone
-from flask import abort, jsonify, request, send_file
+from flask import abort, jsonify, request, send_file, session
 from pathlib import Path
 import base64
 import io
@@ -11,13 +11,37 @@ from travel_publication import destinations, split_guides, budget_summary
 
 SCOPE = "request->>'assistant' = 'travel'"
 ACTIVE = ('queued', 'running', 'testing', 'publishing')
+FAMILY_KEY = 'travel_family_preferences:'
+FAMILY_TEXT = {'origin':80, 'rooms':120, 'budget':120, 'companions':300,
+               'walking':120, 'transport':120, 'preferences':1500, 'food':300, 'excluded':500}
+PACES = ('', 'relaxed', 'balanced', 'active')
+
+
+def normalize_family(value):
+    if not isinstance(value, dict) or set(value) - (set(FAMILY_TEXT) | {'people', 'pace'}):
+        abort(400, description='家庭偏好格式不正确')
+    result = {}
+    for field, limit in FAMILY_TEXT.items():
+        text = value.get(field, '')
+        if not isinstance(text, str) or len(text) > limit:
+            abort(400, description='家庭偏好过长或格式不正确')
+        result[field] = text.strip()
+    people = value.get('people')
+    if people is not None and (type(people) is not int or not 1 <= people <= 50):
+        abort(400, description='常用人数可留空，或填写 1～50 人')
+    result['people'] = people
+    result['pace'] = value.get('pace', '')
+    if result['pace'] not in PACES:
+        abort(400, description='请选择有效的游玩节奏')
+    return result
 
 
 def normalize_trip(value):
     if not isinstance(value, dict): abort(400, description='旅行条件格式不正确')
     result = {}
     for field, limit in {'destination':120, 'origin':80, 'dates':120, 'rooms':120,
-                         'budget':120, 'preferences':1500, 'excluded':500}.items():
+                         'budget':120, 'preferences':1500, 'excluded':500,
+                         'companions':300, 'walking':120, 'transport':120, 'food':300}.items():
         text = value.get(field, '')
         if not isinstance(text, str) or len(text) > limit: abort(400, description='旅行条件过长或格式不正确')
         result[field] = text.strip()
@@ -30,10 +54,36 @@ def normalize_trip(value):
     if result['mode'] not in ('itinerary', 'compare'): abort(400, description='请选择攻略或目的地对比')
     result['template']='auto'
     if value.get('template','auto') not in ('auto','culture','nature','food'): abort(400, description='请选择有效的攻略模板')
+    result['pace'] = value.get('pace', '')
+    if result['pace'] not in PACES: abort(400, description='请选择有效的游玩节奏')
+    result['planning_style'] = 'family'
     return result
 
 
 def register(app, db, payload, audit, render_markdown, validate, sync_tags, data_path):
+    def family_preferences():
+        row = db().execute('SELECT value FROM settings WHERE key=%s', (FAMILY_KEY+str(session['admin_id']),)).fetchone()
+        value = row['value'] if row else {}
+        return {'preferences':normalize_family(value.get('preferences', {})), 'updated_at':value.get('updated_at')}
+
+    @app.get('/api/admin/travel-agent/preferences')
+    def travel_preferences():
+        return jsonify(family_preferences())
+
+    @app.put('/api/admin/travel-agent/preferences')
+    def travel_preferences_save():
+        preferences = normalize_family(payload().get('preferences'))
+        # Hold the account row until commit so removal cannot leave orphan preferences.
+        account = db().execute('SELECT id,session_version FROM admins WHERE id=%s FOR KEY SHARE', (session['admin_id'],)).fetchone()
+        if not account or account['session_version'] != session.get('version'):
+            abort(401, description='登录信息已更新，请重新登录')
+        value = {'preferences':preferences, 'updated_at':datetime.now(timezone.utc).isoformat()}
+        db().execute('INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                     (FAMILY_KEY+str(account['id']), Jsonb(value)))
+        audit('travel_agent.preferences_update', details={'fields':[key for key,value in preferences.items() if value not in ('', None)]})
+        db().commit()
+        return jsonify(value)
+
     def task(task_id, lock=False):
         row = db().execute('SELECT * FROM agent_tasks WHERE id=%s AND '+SCOPE+(' FOR UPDATE' if lock else ''), (task_id,)).fetchone()
         if not row: abort(404, description='旅游任务不存在')
@@ -54,7 +104,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
                             (' AND id<%s' if before else '')+' ORDER BY id DESC LIMIT 51', (int(before),) if before else ()).fetchall()
         items = [{**{key:row[key] for key in ('id','prompt','status','parent_id','created_at','updated_at')},
                   'trip':row['request'].get('trip',{}), 'guide_id':row['request'].get('guide_id')} for row in rows[:50]]
-        return jsonify(tasks=items, next_before=rows[49]['id'] if len(rows)>50 else None, service=service())
+        return jsonify(tasks=items, next_before=rows[49]['id'] if len(rows)>50 else None, service=service(), family_preferences=family_preferences())
 
     @app.get('/api/admin/travel-agent/tasks/<int:task_id>')
     def travel_detail(task_id):
@@ -150,7 +200,12 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
             if type(parent_id) is not int or not 1 <= parent_id < 10**18: abort(400, description='关联任务无效')
             parent = task(parent_id)
             if parent['status'] in ACTIVE: abort(409, description='请等待当前任务完成后再继续修改')
-        trip = normalize_trip(data.get('trip',parent['request'].get('trip',{}) if parent else {}))
+        # New plans inherit saved preferences; followups retain their original snapshot.
+        base = dict(parent['request'].get('trip', {})) if parent else {
+            key:value for key,value in family_preferences()['preferences'].items() if value is not None}
+        supplied = data.get('trip', {})
+        if not isinstance(supplied, dict): abort(400, description='旅行条件格式不正确')
+        trip = normalize_trip({**base, **supplied})
         count = db().execute("SELECT count(*) AS n FROM agent_tasks WHERE request->>'assistant'='travel' AND status IN ('queued','running','testing','publishing')").fetchone()['n']
         if count >= 5: abort(429, description='助手队列已满，请等现有任务完成后再提交')
         row = db().execute("INSERT INTO agent_tasks(kind,prompt,parent_id,request) VALUES('chat',%s,%s,%s) RETURNING id",

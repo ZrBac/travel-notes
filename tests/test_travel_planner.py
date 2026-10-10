@@ -205,3 +205,88 @@ class TravelPlannerTests(unittest.TestCase):
         self.assertEqual(self.client.get(url).status_code,200)
         self.assertEqual(self.fixture.visitor.get(url).status_code,404)
         self.assertEqual(self.fixture.mutate('POST',media_path,{'action':'trash'}).status_code,200)
+
+
+    def save_family(self, **values):
+        return self.fixture.mutate('PUT', '/api/admin/travel-agent/preferences', {'preferences':values})
+
+    def test_family_preferences_persist_privately_across_sessions(self):
+        empty=self.client.get('/api/admin/travel-agent/preferences')
+        self.assertIsNone(empty.json['updated_at']);self.assertIsNone(empty.json['preferences']['people'])
+        response=self.save_family(origin='  家庭偏好测试城市  ',people=3,rooms='一间家庭房',budget='人均 3000 元，不含往返',
+                                  companions='两位成人和一位孩子',pace='relaxed',walking='每天少于 6000 步',
+                                  transport='公共交通为主',food='不吃花生',preferences='博物馆与美食',excluded='测试目的地')
+        self.assertEqual(response.status_code,200,response.json);self.assertEqual(response.headers['Cache-Control'],'no-store')
+        saved=response.json;self.assertEqual(saved['preferences']['origin'],'家庭偏好测试城市');self.assertTrue(saved['updated_at'])
+        other_session=test_app.app.test_client();self.fixture.login(other_session)
+        self.assertEqual(other_session.get('/api/admin/travel-agent/preferences').json,saved)
+        self.assertEqual(self.client.get('/api/admin/travel-agent').json['family_preferences'],saved)
+        self.assertEqual(self.fixture.visitor.get('/api/admin/travel-agent/preferences').status_code,401)
+        self.assertEqual(self.fixture.visitor.put('/api/admin/travel-agent/preferences',json={'preferences':{}}).status_code,401)
+        self.assertEqual(self.client.put('/api/admin/travel-agent/preferences',json={'preferences':{}}).status_code,403)
+        for client in (self.client,self.fixture.visitor):
+            self.assertNotIn('家庭偏好测试城市',client.get('/api/bootstrap').get_data(as_text=True))
+        exported=self.client.get('/api/admin/export').get_data(as_text=True)
+        self.assertNotIn('travel_family_preferences:',exported);self.assertNotIn('家庭偏好测试城市',exported)
+
+    def test_new_plans_use_family_preferences_and_trip_changes_are_snapshots(self):
+        self.assertEqual(self.save_family(origin='上海',people=3,rooms='一间家庭房',pace='relaxed',walking='每天 6000 步以内',food='不吃花生').status_code,200)
+        first=self.post('/tasks',{'prompt':'规划南京家庭旅行','trip':{'destination':'南京','dates':'秋季','people':4,'origin':''}})
+        self.assertEqual(first.status_code,201,first.json);first_id=first.json['id']
+        snapshot=self.client.get(f'/api/admin/travel-agent/tasks/{first_id}').json['task']['trip']
+        self.assertEqual(snapshot['people'],4);self.assertEqual(snapshot['origin'],'');self.assertEqual(snapshot['food'],'不吃花生')
+        self.assertEqual(snapshot['rooms'],'一间家庭房');self.assertEqual(snapshot['walking'],'每天 6000 步以内')
+        self.assertEqual(snapshot['planning_style'],'family');self.assertEqual(snapshot['template'],'auto')
+        self.assertEqual(self.client.get('/api/admin/travel-agent/preferences').json['preferences']['people'],3)
+        self.complete(first_id)
+        self.assertEqual(self.save_family(origin='北京',people=2,pace='active',food='少辣').status_code,200)
+        followup=self.post('/tasks',{'prompt':'第二天安排轻松一点','parent_id':first_id})
+        self.assertEqual(followup.status_code,201,followup.json)
+        current=self.client.get('/api/admin/travel-agent/tasks/'+str(followup.json['id'])).json['task']['trip']
+        self.assertEqual(current,snapshot,'changed defaults must not alter an existing trip')
+        partial=self.post('/tasks',{'prompt':'改成三天，取消忌口条件','parent_id':first_id,'trip':{'days':3,'food':''}})
+        self.assertEqual(partial.status_code,201,partial.json)
+        current=self.client.get('/api/admin/travel-agent/tasks/'+str(partial.json['id'])).json['task']['trip']
+        self.assertEqual(current['days'],3);self.assertEqual(current['people'],4);self.assertEqual(current['origin'],'');self.assertEqual(current['food'],'')
+        new=self.post('/tasks',{'prompt':'规划下一次家庭旅行','trip':{'destination':'泉州'}})
+        self.assertEqual(new.status_code,201,new.json)
+        next_trip=self.client.get('/api/admin/travel-agent/tasks/'+str(new.json['id'])).json['task']['trip']
+        self.assertEqual(next_trip['people'],2);self.assertEqual(next_trip['origin'],'北京');self.assertEqual(next_trip['pace'],'active')
+        self.assertEqual(self.client.get(f'/api/admin/travel-agent/tasks/{first_id}').json['task']['trip'],snapshot)
+
+    def test_old_followup_does_not_inherit_current_family_defaults(self):
+        first=self.create();self.complete(first)
+        self.assertEqual(self.save_family(origin='上海',people=2,companions='两位成人',rooms='一间双床房',food='不吃海鲜').status_code,200)
+        followup=self.post('/tasks',{'prompt':'继续原来的九人行程','parent_id':first})
+        self.assertEqual(followup.status_code,201,followup.json)
+        trip=self.client.get('/api/admin/travel-agent/tasks/'+str(followup.json['id'])).json['task']['trip']
+        self.assertEqual(trip['people'],9);self.assertEqual(trip['rooms'],'9 间');self.assertEqual(trip['food'],'');self.assertEqual(trip['companions'],'')
+
+    def test_family_preferences_validation_and_reset(self):
+        self.assertEqual(self.save_family(origin='已保存城市',people=3).status_code,200)
+        for values in (None,[],{'people':True},{'people':0},{'people':51},{'people':'3'},
+                       {'origin':None},{'companions':'x'*301},{'food':'x'*301},
+                       {'pace':'fast'},{'pace':[]},{'admin_id':99}):
+            response=self.fixture.mutate('PUT','/api/admin/travel-agent/preferences',{'preferences':values})
+            self.assertEqual(response.status_code,400,response.json)
+        self.assertEqual(self.client.get('/api/admin/travel-agent/preferences').json['preferences']['origin'],'已保存城市')
+        self.assertEqual(self.save_family().status_code,200)
+        self.assertIsNone(self.client.get('/api/admin/travel-agent/preferences').json['preferences']['people'])
+        for trip in ({'pace':'fast'},{'companions':'x'*301},{'walking':False},{'transport':None},{'food':'x'*301}):
+            self.assertEqual(self.post('/tasks',{'prompt':'家庭出游规划','trip':trip}).status_code,400)
+
+    def test_family_preferences_are_account_scoped_and_removed_with_account(self):
+        self.assertEqual(self.save_family(origin='账号一城市',people=3).status_code,200)
+        account=self.fixture.mutate('POST','/api/admin/accounts',{'username':'family_two','display_name':'家庭二',
+            'password':'family-pass-8','confirm_password':'family-pass-8','current_password':'testing-password-123'})
+        self.assertEqual(account.status_code,201,account.json);account_id=account.json['account']['id']
+        other=test_app.app.test_client();token=self.fixture.login(other,password='family-pass-8',username='family_two')
+        self.assertEqual(other.get('/api/admin/travel-agent/preferences').json['preferences']['origin'],'')
+        saved=other.put('/api/admin/travel-agent/preferences',json={'preferences':{'origin':'账号二城市','people':2}},headers={'X-CSRF-Token':token})
+        self.assertEqual(saved.status_code,200,saved.json)
+        self.assertEqual(self.client.get('/api/admin/travel-agent/preferences').json['preferences']['origin'],'账号一城市')
+        self.assertEqual(other.get('/api/admin/travel-agent/preferences?admin_id=1').json['preferences']['origin'],'账号二城市')
+        self.assertEqual(self.fixture.mutate('DELETE',f'/api/admin/accounts/{account_id}',{'current_password':'testing-password-123'}).status_code,200)
+        with connect() as c:self.assertIsNone(c.execute('SELECT value FROM settings WHERE key=%s',('travel_family_preferences:'+str(account_id),)).fetchone())
+        self.assertEqual(other.get('/api/admin/travel-agent/preferences').status_code,401)
+        self.assertEqual(self.client.get('/api/admin/travel-agent/preferences').json['preferences']['origin'],'账号一城市')
