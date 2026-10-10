@@ -62,7 +62,10 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(self.publish().status_code,404)
     def test_publication_visible_idempotent_and_does_not_overwrite_edits(self):
         r=self.publish();self.assertEqual(r.status_code,201,r.json);ids=[g['id'] for g in r.json['guides']]
-        for gid in ids:self.assertEqual(self.fixture.visitor.get('/api/guides/'+str(gid)).status_code,200)
+        for gid in ids:
+            saved=self.fixture.visitor.get('/api/guides/'+str(gid))
+            self.assertEqual(saved.status_code,200)
+            self.assertEqual(saved.json['guide']['tags'],[])
         with connect() as c:
             c.execute("UPDATE guides SET body='管理员修改',status='private' WHERE id=%s",(ids[0],))
         again=self.publish();self.assertEqual(again.status_code,200);self.assertTrue(again.json['already_saved'])

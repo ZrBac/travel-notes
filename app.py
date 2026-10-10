@@ -545,7 +545,8 @@ def validate(data):
     except (ValueError,TypeError): abort(400,description='旅行天数应为 1～365 天')
     tags=data.get('tags',[])
     if not isinstance(tags,list) or len(tags)>12 or any(not isinstance(t,str) or len(t)>24 for t in tags): abort(400,description='最多 12 个标签，每个不超过 24 字')
-    result['tags']=Jsonb(list(dict.fromkeys(t.strip() for t in tags if t.strip())))
+    # Provenance belongs in sources, rather than the optional travel themes.
+    result['tags']=Jsonb(list(dict.fromkeys(t.strip() for t in tags if t.strip() and t.strip() not in ('参考','AI参考'))))
     cover=data.get('cover','/static/assets/lake.jpg')
     if not isinstance(cover,str) or not re.fullmatch(r'/(?:static/assets/[a-z]+\.(?:jpg|svg)|media/[a-f0-9]{32}\.webp)',cover): abort(400,description='请选择有效封面')
     if cover.startswith('/media/'):
@@ -807,7 +808,8 @@ def bulk_guides():
 @app.get('/api/admin/taxonomy')
 def taxonomy():
     cats=db().execute('SELECT c.id,c.name,count(g.id) AS count FROM categories c LEFT JOIN guides g ON g.category_id=c.id AND g.deleted_at IS NULL GROUP BY c.id ORDER BY c.id').fetchall()
-    tags=db().execute('SELECT t.name,(SELECT count(*) FROM guides g WHERE g.tags ? t.name AND g.deleted_at IS NULL) AS count FROM tags t ORDER BY t.name').fetchall()
+    # Keep historical tags in storage, but suggest only themes in current guides.
+    tags=db().execute("SELECT t.name,count(g.id) AS count FROM tags t JOIN guides g ON g.tags ? t.name AND g.deleted_at IS NULL WHERE t.name NOT IN ('参考','AI参考') GROUP BY t.name ORDER BY count(g.id) DESC,t.name").fetchall()
     return jsonify(categories=cats,tags=tags)
 
 @app.post('/api/admin/taxonomy')

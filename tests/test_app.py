@@ -199,6 +199,26 @@ class AppTests(unittest.TestCase):
             tags=self.client.get('/api/guides/'+str(g['id'])).json['guide']['tags'];self.assertEqual(tags,[new] if new else [])
         self.assertEqual(self.mutate('POST','/api/admin/taxonomy',{'kind':'category','action':'delete','id':cat}).status_code,200)
         self.assertIsNone(self.client.get('/api/guides/'+str(g['id'])).json['guide']['category_id'])
+
+    def test_theme_suggestions_exclude_unused_and_trashed_tags(self):
+        self.login()
+        current=self.create(tags=['自然风景','摄影'])
+        old=self.create(tags=['历史标签','自然风景'])
+        self.mutate('DELETE','/api/guides/'+str(old['id']))
+        self.mutate('POST','/api/admin/taxonomy',{'kind':'tag','action':'create','name':'未使用的标签'})
+        themes=self.client.get('/api/admin/taxonomy').json['tags']
+        self.assertEqual({t['name']:t['count'] for t in themes},{'自然风景':1,'摄影':1})
+        self.assertEqual(self.client.get('/api/guides/'+str(old['id'])).json['guide']['tags'],['历史标签','自然风景'])
+        self.mutate('DELETE','/api/guides/'+str(current['id']))
+        self.assertEqual(self.client.get('/api/admin/taxonomy').json['tags'],[])
+
+    def test_guide_themes_drop_provenance_and_keep_meaningful_custom_labels(self):
+        self.login()
+        guide=self.create(tags=['参考','自然风景',' AI参考 ','摄影','自然风景','2026秋游备选'])
+        self.assertEqual(guide['tags'],['自然风景','摄影','2026秋游备选'])
+        guide['tags']=['AI参考','人文体验','自己的主题']
+        self.assertEqual(self.mutate('PUT','/api/guides/'+str(guide['id']),guide).status_code,200)
+        self.assertEqual(self.client.get('/api/guides/'+str(guide['id'])).json['guide']['tags'],['人文体验','自己的主题'])
     def test_media_privacy_and_reference_protection(self):
         self.login();buf=io.BytesIO();Image.new('RGB',(80,60),'green').save(buf,'PNG');buf.seek(0)
         r=self.client.post('/api/upload',data={'image':(buf,'image.png')},headers={'X-CSRF-Token':self.csrf},content_type='multipart/form-data');self.assertEqual(r.status_code,201,r.json)

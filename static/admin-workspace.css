@@ -1,4 +1,11 @@
 /* Shared presentation for every administration page; no external fonts or assets. */
+.guide-topic-editor { margin: 18px 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.guide-topic-editor>summary, .guide-topic-maintenance>summary { cursor: pointer; font-size: 13px; color: var(--muted); min-height: 40px; line-height: 40px; }
+.guide-topic-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+.guide-topic-choices button { min-height: 40px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.guide-topic-choices button[aria-pressed=true] { background: var(--light); border-color: var(--green); color: var(--green); }
+.guide-topic-maintenance-body { margin-top: 16px; }
+.guide-topic-maintenance .taxonomy-row strong { overflow-wrap: anywhere; }
 .admin-space {
   --bg: #f5f6f2;
   --card: #fff;

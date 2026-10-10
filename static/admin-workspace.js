@@ -2,10 +2,10 @@
 const AdminWorkspace = (() => {
   const groups = [
     {title: '常用功能', items: [['trips', 'compass', '我的旅行'], ['guides', 'book', '攻略管理'], ['records', 'pin', '旅行足迹'], ['media', 'image', '图片素材'], ['travel-agent', 'spark', '旅游助手']]},
-    {title: '设置与维护', collapsible: true, items: [['agent', 'settings', '网站管家'], ['settings', 'sliders', '站点设置'], ['taxonomy', 'tag', '分类与标签'], ['data', 'data', '数据与备份'], ['audit', 'clock', '操作记录'], ['account', 'user', '管理员账号']]}
+    {title: '设置与维护', collapsible: true, items: [['agent', 'settings', '网站管家'], ['settings', 'sliders', '站点设置'], ['taxonomy', 'tag', '分类管理'], ['data', 'data', '数据与备份'], ['audit', 'clock', '操作记录'], ['account', 'user', '管理员账号']]}
   ];
   const aliases = {dashboard: 'trips', trip: 'trips', 'trip-new': 'trips', edit: 'guides', new: 'guides', import: 'guides', trash: 'guides', 'record-edit': 'records', 'record-new': 'records', 'record-trash': 'records'};
-  const titles = {dashboard: '我的旅行', guides: '攻略管理', trash: '攻略回收站', records: '旅行足迹', 'record-trash': '足迹回收站', media: '图片素材', taxonomy: '分类与标签', 'travel-agent': '旅游助手', agent: '网站管家', settings: '站点设置', data: '数据与备份', audit: '操作记录', account: '管理员账号', edit: '编辑攻略', new: '新建攻略', 'record-edit': '编辑旅行足迹', 'record-new': '记录旅行足迹'};
+  const titles = {dashboard: '我的旅行', guides: '攻略管理', trash: '攻略回收站', records: '旅行足迹', 'record-trash': '足迹回收站', media: '图片素材', taxonomy: '分类管理', 'travel-agent': '旅游助手', agent: '网站管家', settings: '站点设置', data: '数据与备份', audit: '操作记录', account: '管理员账号', edit: '编辑攻略', new: '新建攻略', 'record-edit': '编辑旅行足迹', 'record-new': '记录旅行足迹'};
   const viewOf = route => route.split(/[/?]/)[0];
   const active = route => aliases[viewOf(route)] || viewOf(route);
   function meta(view) {

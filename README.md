@@ -328,3 +328,6 @@ JavaScript 传输压缩：Nginx 的 gzip_types 同时包含 text/javascript 与 
 识图任务使用 `record_photos` / `agent/photo_workflows.py`，沿用管理员鉴权、CSRF、no-store、私密任务快照、版本冲突保护、后台继续运行、停止和批量删除。控制器只从实际相册复制普通 WebP 文件，拒绝符号链接及外部路径；最大边 960 像素的 JPEG 通过 CLI 初始图片输入发送，不需要新的 API 密钥。任务关闭搜索和 shell 功能，不改变当前模型配置；副本在完成、停止或错误后清理。CLI 图片参数已核对 [OpenAI Docs](https://learn.chatgpt.com/docs/developer-commands?surface=cli)。
 
 验证：隔离数据库 `tests/test_photo_album.py` 覆盖 EXIF、GPS 隔离、公开网页图片去元数据、旧图回退、日期/相似分组、真实文件约束、严格图片对应关系及快照冲突；`tests/photo-album-browser.cjs` 覆盖 320/390/1440 像素的选图、日期、手写说明、封面、撤销和明确私密保存。真实模型验证使用网站已有公开示例照片和临时目录，不创建生产任务或足迹。
+
+
+攻略主题作为选填信息收起在编辑页，提供六个常用主题点选，建议保留 1—3 个。攻略列表按目的地/主题关键词搜索，并按分类和状态筛选；前台不再设置独立标签浏览页，旧链接兼容转到攻略列表。分类管理只列当前使用的主题，历史攻略信息保留；助手不再自动添加“AI参考”标签。

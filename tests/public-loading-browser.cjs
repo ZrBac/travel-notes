@@ -24,11 +24,11 @@ const guide={id:1,title:'测试攻略',destination:'泉州',country:'中国',day
  await p.goto('http://public.test/'+(preview?'?preview=1':''));await p.waitForSelector('.journal-lead');
  await p.waitForFunction(()=>requests.some(r=>r.path.startsWith('/media/')&&!r.aborted));
  await p.evaluate(()=>{holdGuide=true;location.hash='guide/1';});await p.waitForFunction(()=>requests.some(r=>r.path==='/api/guides/1'&&!r.aborted));
- await p.evaluate(()=>location.hash='tags');await p.waitForSelector('.tag-grid');assert.ok(await p.evaluate(()=>requests.filter(r=>r.path==='/api/guides/1').every(r=>r.aborted)));
+ await p.evaluate(()=>location.hash='tags');await p.waitForSelector('#guide-grid');assert.ok(await p.evaluate(()=>requests.filter(r=>r.path==='/api/guides/1').every(r=>r.aborted)));
  await p.evaluate(()=>location.hash='guide/1');await p.waitForSelector('[data-action=retry-page]');assert.ok((await p.locator('#app').innerText()).includes('加载超时'));
  await p.evaluate(()=>holdGuide=false);await p.locator('[data-action=retry-page]').click();await p.waitForSelector('.article-header');
  await p.waitForFunction(()=>requests.filter(r=>r.path.startsWith('/media/')&&!r.aborted).length===2);assert.equal(await p.evaluate(()=>requests.filter(r=>r.path.startsWith('/media/')&&!r.aborted).length),2);
- await p.evaluate(()=>location.hash='tags');await p.waitForSelector('.tag-grid');assert.equal(await p.evaluate(()=>requests.filter(r=>r.path.startsWith('/media/')&&!r.aborted).length),0);
+ await p.evaluate(()=>location.hash='tags');await p.waitForSelector('#guide-grid');assert.ok(await p.evaluate(()=>requests.filter(r=>r.path.startsWith('/media/')&&!r.aborted).length<=1),'only the collection thumbnail remains after leaving detail');
  assert.ok(await p.evaluate(mode=>requests.every(r=>r.credentials===mode),preview?'same-origin':'omit'),'visitor API and images must omit administrator cookies');
  assert.ok(await p.evaluate(()=>!document.querySelector('#app').inert));assert.deepEqual(errors,[]);await ctx.close();
  }console.log('PASS: public and preview isolation, API/image cancellation, bounded detail images, timeout retry, no stale render');

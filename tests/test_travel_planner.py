@@ -55,6 +55,7 @@ class TravelPlannerTests(unittest.TestCase):
         again=self.post(f'/tasks/{first}/save');self.assertEqual(again.status_code,200);self.assertEqual(again.json['id'],gid)
         current=self.client.get('/api/guides/'+str(gid)).json['guide']
         self.assertEqual(current['status'],'draft');self.assertEqual(current['body'],guide['body']);self.assertEqual(current['verified_at'],'')
+        self.assertEqual(current['tags'],[])
         self.assertEqual(self.fixture.visitor.get('/api/guides/'+str(gid)).status_code,404)
         self.assertEqual(self.client.get('/api/admin/overview').json['counts']['total'],1)
         self.fixture.mutate('DELETE','/api/guides/'+str(gid))

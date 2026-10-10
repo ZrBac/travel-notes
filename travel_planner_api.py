@@ -177,7 +177,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
                 abort(409, description='已存档攻略的状态已改变，请进入攻略编辑页处理')
         else:
             # Validate every candidate before inserting anything; one transaction for all.
-            values_list = [validate({**guide,'status':status,'verified_at':'','tags':['AI参考'],'sample':False}) for guide in guides]
+            values_list = [validate({**guide,'status':status,'verified_at':'','tags':[],'sample':False}) for guide in guides]
             saved = []
             for values in values_list:
                 sync_tags(values)
@@ -262,7 +262,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
             return jsonify(id=existing,already_saved=True)
         guide = row['report'].get('travel_guide')
         if row['status']!='done' or not isinstance(guide,dict): abort(409, description='攻略生成完成后才能存档')
-        values = validate({**guide, 'status':'draft', 'verified_at':'', 'tags':['AI参考'], 'cover':guide.get('cover','/static/assets/lake.jpg'), 'sample':False})
+        values = validate({**guide, 'status':'draft', 'verified_at':'', 'tags':[], 'cover':guide.get('cover','/static/assets/lake.jpg'), 'sample':False})
         sync_tags(values)
         saved = db().execute('INSERT INTO guides('+','.join(values)+') VALUES('+','.join('%s' for _ in values)+') RETURNING id',list(values.values())).fetchone()
         context = {**row['request'],'guide_id':saved['id']}
