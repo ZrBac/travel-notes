@@ -24,9 +24,9 @@ const fs=require('fs'),path=require('path'),assert=require('assert/strict');cons
   if(u.pathname.startsWith('/media/')){assert.ok(['320','480','640'].includes(u.searchParams.get('w')));return r.fulfill({contentType:'image/png',body:image});}
   const f=path.join(root,u.pathname==='/admin'?'static/admin.html':u.pathname);return r.fulfill({body:fs.readFileSync(f),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[path.extname(f)]||'application/octet-stream'});
  });
- await page.goto('http://cache.test/admin#travel-agent');await page.waitForSelector('.planner-prose');assert.equal(details,1);
+ await page.goto('http://cache.test/admin#travel-agent/1');await page.waitForSelector('.planner-prose');assert.equal(details,1);
  const visit=hash=>page.evaluate(async h=>{history.replaceState(null,'','#'+h);await route();},hash);
- const revisit=async()=>{await visit('account');await visit('travel-agent');};
+ const revisit=async()=>{await visit('account');await visit('travel-agent/1');};
  await revisit();assert.equal(lists,2);assert.equal(details,1,'fresh task list can reuse same completed result');
  stamp='2026-09-24T02:00:00Z';await revisit();assert.equal(details,2,'changed task version reloads body');
  status='running';await revisit();await revisit();assert.equal(details,4,'running tasks always fetch current state');

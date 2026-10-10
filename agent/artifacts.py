@@ -3,6 +3,7 @@ import difflib
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -10,6 +11,13 @@ import stat
 DIRECTORIES = ('static','ops-config','tests','migrations')
 ROOT_EXTENSIONS = ('.py','.sql','.txt','.md')
 APP_MODULES = {'app.py','performance.py','html_imports.py','handbooks.py'}
+BUSINESS_MODULES = {'agent_api.py','travel_planner_api.py','travel_publication.py','task_management.py','trip_api.py','trip_assistant_api.py'}
+
+
+def reviewable(name, old, new):
+    # Only application code, executed as the website UID. No root tooling,
+    # schema, dependencies or import-shadowing names can enter this route.
+    return name in new and (name in BUSINESS_MODULES or (name not in old and re.fullmatch(r'feature_[a-z0-9_]+\.py',name) is not None))
 
 
 def paths(root):
@@ -63,7 +71,7 @@ def compare(old_root, new_root):
     changes=[];pieces=[];used=0
     for name in sorted(set(old)|set(new)):
         if old.get(name)==new.get(name): continue
-        entry={'path':name,'action':'新增' if name not in old else '删除' if name not in new else '修改','automatic':allowed(name,old,new)}
+        entry={'path':name,'action':'新增' if name not in old else '删除' if name not in new else '修改','automatic':allowed(name,old,new),'reviewable':reviewable(name,old,new)}
         changes.append(entry)
         try:
             before=(Path(old_root)/name).read_text() if name in old else ''
@@ -75,7 +83,8 @@ def compare(old_root, new_root):
         if remaining>0:
             pieces.append(delta[:remaining]);used+=len(pieces[-1])
     return {'files':changes,'diff':'\n'.join(pieces),'diff_truncated':used>=120000,'artifact':fingerprint(new),
-            'baseline':fingerprint(old),'manual_files':[f['path'] for f in changes if not f['automatic']]}
+            'baseline':fingerprint(old),'review_files':[f['path'] for f in changes if not f['automatic'] and f['reviewable']],
+            'manual_files':[f['path'] for f in changes if not f['automatic'] and not f['reviewable']]}
 
 
 def replace(source, live):

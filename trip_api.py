@@ -289,12 +289,22 @@ def register(app,db,payload,audit,render):
 
     @app.post('/api/admin/trips/<int:trip_id>/plan')
     def trip_plan(trip_id):
-        data=payload();row=locked(trip_id,data)
+        data=payload();workflow=None
+        if 'assistant_task' in data:
+            if any(k in data for k in ('source','restore_version','itinerary')): abort(400,description='请一次只采用一种计划来源')
+            db().execute('SELECT pg_advisory_xact_lock(74390511)')
+            from trip_assistant_api import workflow_task
+            previous=workflow_task(db,data['assistant_task'],trip_id,'adjust_day',True)
+            if previous['request'].get('applied'): return jsonify(ok=True,already_saved=True,**previous['request']['applied'])
+        row=locked(trip_id,data)
         if 'restore_version' in data:
             version=integer(data['restore_version'],10**8,'计划版本')
             original=db().execute('SELECT * FROM trip_plans WHERE trip_id=%s AND version=%s',(trip_id,version)).fetchone()
             if not original:abort(404,description='计划版本不存在')
             snapshot=original['snapshot'];guide_id=original['source_guide_id'];task_id=original['source_task_id'];label='恢复第 '+str(version)+' 版'
+        elif 'assistant_task' in data:
+            from trip_assistant_api import adjustment
+            snapshot,guide_id,task_id,label,workflow=adjustment(db,data['assistant_task'],row)
         elif 'source' in data:
             snapshot,guide_id,task_id,_=source(data['source']);label='采用攻略'
         else:
@@ -305,7 +315,19 @@ def register(app,db,payload,audit,render):
                 snapshot={'destination':row['destination'],'days':(row['end_date']-row['start_date']).days+1,'conditions':{'people':row['people']},'reference_body':''};guide_id=task_id=None
             snapshot['itinerary']=normalize_itinerary(data.get('itinerary'),snapshot['days'],snapshot['destination']);label='手动调整行程'
         version,items,progress=add_plan(row,snapshot,guide_id,task_id,label)
+        if workflow:
+            # This proposal keeps every marked route position and all other days.
+            # Preserve those positions even when a route contains repeated names.
+            previous=workflow['request']['context']['plan']
+            for old_day,new_day in zip(previous['itinerary'],snapshot['itinerary']):
+                for index,stop in enumerate(old_day['stops']):
+                    value=row['progress'].get(f"{previous['version']}:{old_day['day']}:{index}")
+                    if value in ('done','skipped') and index<len(new_day['stops']) and stop==new_day['stops'][index]:
+                        progress[f"{version}:{new_day['day']}:{index}"]=value
         revision=save_trip(row,checklist=items,progress=progress,destination=snapshot['destination'])
+        if workflow:
+            from trip_assistant_api import mark_applied
+            mark_applied(db,workflow,{'version':version,'revision':revision})
         audit('trip.plan',trip_id,{'version':version,'label':label});db().commit();return jsonify(ok=True,version=version,revision=revision)
 
     @app.get('/api/admin/trips/<int:trip_id>/plans/<int:version>')

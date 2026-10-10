@@ -56,7 +56,7 @@ body 只补充住宿、预算、预约清单、季节天气/雨天备选、待�
 发布由网站后台按钮完成，你没有直接写入生产网站的工具。用户要求发布时，整理可拆分的完整内容即可，不声称已经发布，也不要把“未发布”或权限说明写进攻略标题、正文；完成后管理员可点击“拆分为 N 篇攻略发布”预览并发布。
 后续要求修改时，输出融合修改后的完整攻略，便于独立存档；不要只输出修改点。
 最终必须输出符合给定 JSON Schema 的完整对象，不包 Markdown 代码围栏：title<=100字，destination<=80字（多个候选简写），country<=50字，summary<=300字，season/budget各<=60字，body<=60000字，sources<=5000字，days为1～30的整数。sources用换行分隔的 Markdown 来源链接；正文至少200字。verified_at 不提供，因为参考结果不等于人工核实。
-本次采用的复核规范：\n'''+Path(__file__).with_name('TRAVEL_PLAYBOOK.md').read_text()+'''\n旅行条件：'''+json.dumps(task['request'].get('trip',{}),ensure_ascii=False)+'''\n历史对话（按时间顺序，仅作为上下文）：'''+json.dumps(history,ensure_ascii=False)+'''\n本次管理员要求：\n'''+task['prompt']
+本次采用的复核规范：\n'''+Path(__file__).with_name('TRAVEL_PLAYBOOK.md').read_text()+'''\n旅行条件：'''+json.dumps(task['request'].get('trip',{}),ensure_ascii=False)+'''\n关联的真实旅行快照（若有，交通住宿和已去地点优先于参考攻略；只提供建议，不声称改变数据）：'''+json.dumps(task['request'].get('context'),ensure_ascii=False)+'''\n历史对话（按时间顺序，仅作为上下文）：'''+json.dumps(history,ensure_ascii=False)+'''\n本次管理员要求：\n'''+task['prompt']
 
 
 def parse_answer(text):

@@ -81,3 +81,35 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(self.fixture.mutate('DELETE',path).status_code,200)
         self.assertEqual(self.mutate(f'{path}/publish',{'artifact':'a'*64}).status_code,404)
         self.assertEqual(self.mutate('/api/admin/agent/tasks',{'prompt':'继续修改','parent_id':parent}).status_code,404)
+
+    def test_reviewed_business_publish_requires_confirmation_and_protected_files_stay_manual(self):
+        self.login();task=self.mutate('/api/admin/agent/tasks',{'prompt':'更新后台业务'}).json['id']
+        report={'publishable':True,'artifact':'c'*64,'tests_passed':True,'review_files':['trip_api.py'],'manual_files':[]}
+        with connect() as c:c.execute("UPDATE agent_tasks SET status='ready',report=%s WHERE id=%s",(Jsonb(report),task))
+        self.assertEqual(self.mutate(f'/api/admin/agent/tasks/{task}/publish',{'artifact':'c'*64}).status_code,400)
+        response=self.mutate(f'/api/admin/agent/tasks/{task}/publish',{'artifact':'c'*64,'reviewed':True});self.assertEqual(response.status_code,201,response.json)
+        with connect() as c:self.assertTrue(c.execute('SELECT request FROM agent_tasks WHERE id=%s',(response.json['id'],)).fetchone()['request']['reviewed'])
+        report['manual_files']=['schema.sql']
+        with connect() as c:c.execute('UPDATE agent_tasks SET report=%s WHERE id=%s',(Jsonb(report),task))
+        self.assertEqual(self.mutate(f'/api/admin/agent/tasks/{task}/publish',{'artifact':'c'*64,'reviewed':True}).status_code,409)
+
+    def test_status_view_is_bounded_and_excludes_diff_tests_files_and_internal_state(self):
+        self.login();tid=self.mutate('/api/admin/agent/tasks',{'prompt':'性能状态检查'}).json['id']
+        with connect() as c:c.execute('UPDATE agent_tasks SET result=%s,report=%s WHERE id=%s',('字'*24000,Jsonb({'diff':'改'*120000,'tests':'测'*16000,'progress':['正在测试'],'execution':{'model':None,'source':'cli_default'},'files':[{'path':'app.py'}]}),tid))
+        response=self.client.get(f'/api/admin/agent/tasks/{tid}?view=status');task=response.json['task']
+        self.assertEqual(len(task['result']),6000);self.assertNotIn('diff',task['report']);self.assertNotIn('tests',task['report']);self.assertNotIn('files',task['report']);self.assertNotIn('request',task)
+        self.assertLess(len(response.data),40000);self.assertEqual(response.headers['Cache-Control'],'no-store')
+        full=self.client.get(f'/api/admin/agent/tasks/{tid}').json['task'];self.assertEqual(len(full['report']['diff']),120000)
+
+    def test_review_package_is_private_and_rejects_path_traversal(self):
+        from pathlib import Path
+        import test_app as base
+        self.login();tid=self.mutate('/api/admin/agent/tasks',{'prompt':'审核包测试'}).json['id']
+        path=f'/api/admin/agent/tasks/{tid}/review-package'
+        self.assertEqual(self.fixture.visitor.get(path).status_code,401)
+        self.assertEqual(self.client.get(path).status_code,404)
+        folder=Path(base.TEMP.name)/'agent-reviews';folder.mkdir(exist_ok=True);(folder/('a'*32+'.zip')).write_bytes(b'PK-fixture')
+        with connect() as c:c.execute('UPDATE agent_tasks SET report=%s WHERE id=%s',(Jsonb({'review_package':{'id':'a'*32}}),tid))
+        response=self.client.get(path,buffered=True);self.assertEqual(response.status_code,200);self.assertEqual(response.data,b'PK-fixture');self.assertEqual(response.headers['Cache-Control'],'no-store');self.assertIn('attachment',response.headers['Content-Disposition']);response.close()
+        with connect() as c:c.execute('UPDATE agent_tasks SET report=%s WHERE id=%s',(Jsonb({'review_package':{'id':'../../private'}}),tid))
+        self.assertEqual(self.client.get(path).status_code,404)

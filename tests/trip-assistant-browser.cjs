@@ -1,0 +1,92 @@
+// Synthetic APIs only. No production data, accounts or model calls.
+const {chromium}=require('/opt/travel-notes/test-tools/node_modules/playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),clone=v=>JSON.parse(JSON.stringify(v));
+const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lL8AAAAASUVORK5CYII=','base64');
+const itinerary=()=>[1,2].map(day=>({day,destination:'南京',theme:'老城漫步',stops:['老街','博物馆'],transport:'地铁',lunch:'小吃',dinner:'家常菜',stay:'已订酒店',pace:'轻松',slots:['上午','下午','晚上'].map(period=>({period,plan:'逛街休息',transport:'步行',reservation:'无需预约'}))}));
+(async()=>{const browser=await chromium.launch({args:['--no-sandbox']});try{for(const width of [320,390,1440]){
+ const ctx=await browser.newContext({viewport:{width,height:844}}),page=await ctx.newPage(),errors=[],calls=[];
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+ await page.addInitScript(()=>{const timer=window.setTimeout;window.setTimeout=(f,ms,...args)=>timer(f,[4000,5000,20000].includes(ms)?500:ms,...args);});
+ let trip={id:1,title:'南京家庭旅行',destination:'南京',start_date:'2026-11-06',end_date:'2026-11-07',days:2,people:3,companions:'一家三口',transport:'10:30 高铁到达',lodging:'老城酒店双床房',notes:'下午休息',state:'active',revision:1,phase:'upcoming',today_day:null,countdown:27,progress:{'1:1:0':'done'},checklist:[{id:'check1',kind:'prepare',title:'已确认高铁',note:'已订',done:true,day:null,plan_version:null}]};
+ let plan={id:1,version:1,label:'最初计划',snapshot:{title:'家庭慢游',summary:'人文美食',destination:'南京',country:'中国',days:2,budget:'估算',conditions:{people:3,rooms:'双床房'},itinerary:itinerary()}},tasks=[],notes=[],records=[],generic=[],website=[],websiteReport={},stamp=0,uploadCount=0,failNote=true,failAdjust=true;
+ const now=()=>new Date(1900000000000+(++stamp)*1000).toISOString();
+ const metadata=t=>Object.fromEntries(Object.entries(t).filter(([k])=>!['result','html','progress','reason','context'].includes(k)));
+ function result(action){const common={summary:'根据真实资料整理',body:'建议正文',warnings:[],sources:''};if(action==='adjust_day')common.day_plan={...itinerary()[0],theme:'下雨去室内',stops:['老街','博物馆','室内展馆']};if(action==='check_departure')common.checks=[{kind:'reservation',title:'核实博物馆时段',note:'官方入口确认'},{kind:'packing',title:'带雨具',note:'出发前天气复核'}];if(action==='recap')common.title='真实南京回忆';if(action==='preferences')common.suggestions=[{field:'walking',value:'下午多休息',reason:'真实随记提到累了',note_ids:[1]},{field:'food',value:'清淡',reason:'真实文字',note_ids:[1]}];return common;}
+ await ctx.route('**/*',async route=>{
+  const req=route.request(),u=new URL(req.url());assert.equal(u.origin,'http://assistant.test');const method=req.method(),data=method==='GET'||u.pathname==='/api/upload'?null:req.postDataJSON();calls.push({path:u.pathname,search:u.search,method,data});
+  if(u.pathname.startsWith('/api/')){
+   if(method!=='GET'&&u.pathname!='/api/upload')assert.equal(req.headers()['x-csrf-token'],'fixture');
+   if(u.pathname==='/api/session')return route.fulfill({json:{csrf:'fixture',user:{id:1,username:'fixture',display_name:'家庭管理员'}}});
+   if(u.pathname==='/api/admin/trips/1'&&method==='GET')return route.fulfill({json:{trip:clone(trip),plan:clone(plan),versions:[{version:plan.version,label:plan.label,created_at:now()}]}});
+   if(u.pathname==='/api/admin/trips/1/assistant-context')return route.fulfill({json:{context:{trip:clone(trip),plan:{version:plan.version,itinerary:clone(plan.snapshot.itinerary),conditions:plan.snapshot.conditions},notes:clone(notes),preferences:{}}}});
+   if(u.pathname==='/api/admin/trips/1/assistant'&&method==='POST'){
+    assert.equal(data.revision,trip.revision);const id=tasks.length+100,t={id,prompt:data.prompt||data.action,action:data.action,day:data.day,base_revision:trip.revision,trip_id:1,status:'done',updated_at:now(),created_at:now(),stale:false,applied:null,result:result(data.action),html:'<p>仅供预览，确认后保存。</p>'};tasks.unshift(t);return route.fulfill({status:201,json:{id}});
+   }
+   if(u.pathname==='/api/admin/trips/1/assistant'&&method==='GET'){
+    const id=Number(u.searchParams.get('task_id')),rows=id?tasks.filter(t=>t.id===id):tasks;return route.fulfill({json:{tasks:clone(id?rows:rows.map(metadata)),revision:trip.revision}});
+   }
+   if(u.pathname==='/api/admin/trips/1/plan'&&method==='POST'){
+    const t=tasks.find(t=>t.id===data.assistant_task);assert.equal(data.revision,trip.revision);assert.equal(t.action,'adjust_day');
+    if(failAdjust){failAdjust=false;return route.fulfill({status:409,json:{error:'模拟采用冲突；计划未覆盖'}});}
+    plan.version++;plan.snapshot.itinerary[0]=clone(t.result.day_plan);trip.revision++;trip.progress[plan.version+':1:0']='done';t.applied={version:plan.version,revision:trip.revision};t.updated_at=now();return route.fulfill({json:{ok:true,version:plan.version,revision:trip.revision}});
+   }
+   if(/^\/api\/admin\/trips\/1\/assistant\/\d+\/apply$/.test(u.pathname)){
+    const t=tasks.find(t=>t.id===Number(u.pathname.split('/').at(-2)));assert.equal(data.revision,trip.revision);
+    if(t.action==='check_departure'){assert.deepEqual(data.indices,[0]);trip.checklist.push({id:'check2',...t.result.checks[0],done:false,day:null,plan_version:null});trip.revision++;t.applied={revision:trip.revision};}
+    if(t.action==='recap'){assert.equal(notes.length,1);records.push({id:8,title:t.result.title,status:'private'});t.applied={record_id:8,revision:trip.revision};}
+    if(t.action==='preferences'){assert.deepEqual(data.fields,['walking']);t.applied={preferences:{walking:'下午多休息'},revision:trip.revision};}
+    t.updated_at=now();return route.fulfill({json:clone(t.applied)});
+   }
+   if(u.pathname==='/api/admin/trips/1/notes'&&method==='GET')return route.fulfill({json:{notes:clone(notes),records:clone(records),revision:trip.revision,next_page:null}});
+   if(u.pathname==='/api/admin/trips/1/notes'&&method==='POST'){
+    assert.match(data.request_key,/^[a-f0-9]{32}$/);assert.equal(data.revision,trip.revision);
+    if(failNote){failNote=false;return route.fulfill({status:409,json:{error:'模拟保存冲突，照片与文字保留'}});}
+    notes.push({id:1,...clone(data),revision:1});trip.revision++;return route.fulfill({status:201,json:{id:1,revision:trip.revision}});
+   }
+   if(u.pathname==='/api/admin/trips/1/notes/1'&&method==='PUT'){assert.equal(data.revision,1);Object.assign(notes[0],clone(data),{revision:2});trip.revision++;return route.fulfill({json:{ok:true,revision:2,trip_revision:trip.revision}});}
+   if(u.pathname==='/api/admin/trips/1/notes/1'&&method==='DELETE'){assert.equal(data.revision,2);notes=[];trip.revision++;return route.fulfill({json:{ok:true,revision:trip.revision}});}
+   if(u.pathname==='/api/upload'){uploadCount++;assert.equal(req.headers()['x-csrf-token'],'fixture');return route.fulfill({status:201,json:{url:'/media/'+String(uploadCount).padStart(32,'0')+'.webp'}});}
+   if(u.pathname==='/api/admin/travel-agent')return route.fulfill({json:{tasks:clone(generic),next_before:null,service:{online:true,authenticated:true,concurrency:2},family_preferences:{preferences:{people:2,companions:'平常两位成人'},updated_at:'fixture'}}});
+   if(u.pathname==='/api/admin/travel-agent/tasks/77')return route.fulfill({json:{task:{...generic[0],guide:null,result:'运行中',progress:['资料检查'],execution:{model:null,source:'cli_default'}}}});
+   if(u.pathname==='/api/admin/agent')return route.fulfill({json:{tasks:clone(website),next_before:null,service:{online:true,authenticated:true,health:{},versions:[],execution:{model:null,source:'cli_default'}}}});
+   if(u.pathname==='/api/admin/agent/tasks/88')return route.fulfill({json:{task:{...website.find(t=>t.id===88),result:'正在处理',report:clone(websiteReport)}}});
+   if(u.pathname==='/api/admin/agent/tasks/88/publish'){assert.equal(data.reviewed,true);assert.equal(data.artifact,'a'.repeat(64));website.unshift({id:89,kind:'publish',prompt:'发布候选',status:'queued',created_at:now(),updated_at:now()});return route.fulfill({status:201,json:{id:89}});}
+   if(u.pathname==='/api/admin/agent/tasks/89')return route.fulfill({json:{task:{...website[0],result:'待发布',report:{}}}});
+   if(u.pathname==='/api/admin/trips')return route.fulfill({json:{trips:[clone(trip)],total:1,page:1,pages:1}});
+   throw Error('Unexpected API '+method+' '+u.pathname);
+  }
+  if(u.pathname.startsWith('/media/')){assert.equal(method,'GET');assert.ok(['320','1280'].includes(u.searchParams.get('w')));return route.fulfill({body:image,contentType:'image/png'});}
+  const file=path.join(root,u.pathname==='/admin'?'static/admin.html':u.pathname);return route.fulfill({body:fs.readFileSync(file),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream'});
+ });
+ const go=async hash=>{await page.evaluate(h=>location.hash=h,hash);await page.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert,hash);};
+ const showTask=async id=>{await page.locator('#trip-assistant-history summary').click();await page.locator('[data-tripa=task][data-id="'+id+'"]').click();await page.waitForSelector('[data-tripa=apply]');};
+ await page.goto('http://assistant.test/admin#travel-agent?trip=1');await page.waitForSelector('#planner-trip-label');await page.waitForFunction(()=>document.querySelector('#planner-form [name=destination]').readOnly);
+ assert.equal(await page.locator('#planner-form [name=people]').inputValue(),'3');assert.equal(await page.locator('#planner-form [name=dates]').inputValue(),'2026-11-06 至 2026-11-07');assert.equal(calls.filter(c=>/\/tasks\//.test(c.path)).length,0,'assistant landing reads no historical bodies');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'assistant layout '+width);
+ await page.locator('#planner-family-settings>summary').click();await page.locator('[data-planner=apply-family]').click();assert.equal(await page.locator('#planner-form [name=people]').inputValue(),'3');assert.equal(await page.locator('#planner-form [name=companions]').inputValue(),'一家三口');
+ await go('trip/1/today');await page.waitForSelector('#trip-assistant-form');assert.ok((await page.locator('#main').innerText()).includes('10:30 高铁到达'));
+ await page.locator('#trip-assistant-form textarea').fill('下雨了，已去老街，下午改为室内');await page.locator('#trip-assistant-form button').click();await page.waitForSelector('[data-tripa=apply]');
+ assert.equal(calls.filter(c=>c.path==='/api/admin/trips/1/assistant'&&c.method==='POST').length,1);assert.equal(calls.filter(c=>c.path==='/api/admin/trips/1/assistant'&&c.method==='GET'&&!c.search).length,1,'opening history after submit is single-flight');assert.equal(plan.version,1,'proposal has not changed plan');
+ await page.locator('[data-tripa=apply]').click();await page.waitForFunction(()=>document.querySelector('#trip-assistant-error').textContent.includes('模拟采用冲突'));assert.equal(plan.version,1);assert.equal(await page.locator('[data-tripa=apply]').isEnabled(),true);
+ await page.locator('[data-tripa=apply]').click();await page.waitForFunction(()=>document.querySelector('#trip-plan-status').textContent.includes('第 2 版'));assert.equal(trip.lodging,'老城酒店双床房');assert.equal(trip.progress['2:1:0'],'done');assert.equal(plan.snapshot.itinerary[1].theme,'老城漫步');
+ await go('trip/1/notes');await page.waitForSelector('#trip-note-form');await page.locator('#trip-note-form [name=note]').fill('走累了，下午想多休息');await page.locator('#trip-note-form [name=place]').fill('老街');
+ await page.locator('#trip-note-upload').setInputFiles([{name:'phone.jpeg',mimeType:'image/jpeg',buffer:image},{name:'food.jpg',mimeType:'image/jpeg',buffer:image}]);await page.waitForSelector('[data-photo-caption="1"]');assert.ok((await page.locator('#trip-note-upload-status').textContent()).includes('50 MB')||(await page.locator('#trip-note-upload-status').textContent()).includes('保存随记'));await page.locator('[data-photo-caption="0"]').fill('真实老街照片');
+ await page.locator('#trip-note-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#trip-note-error').textContent.includes('模拟保存冲突'));assert.equal(await page.locator('.trip-note-photo').count(),2);assert.equal(await page.locator('#trip-note-form [name=note]').inputValue(),'走累了，下午想多休息');
+ await page.locator('#trip-note-form button[type=submit]').click();await page.waitForSelector('.trip-note');assert.equal(notes[0].photos.length,2);assert.equal(notes[0].photos[0].caption,'真实老街照片');assert.equal(await page.locator('.trip-note-gallery img').count(),2);
+ await page.locator('[data-tripa=edit-note]').click();await page.locator('#trip-note-form [name=note]').fill('午后休息很舒服，下次继续安排');await page.locator('#trip-note-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('.trip-note-text')?.textContent.includes('午后休息很舒服'));
+ await go('trip/1/recap');await page.locator('[data-tripa=start][data-action=recap]').click();await page.waitForSelector('[data-tripa=apply]');assert.equal(records.length,0);await page.locator('[data-tripa=apply]').click();await page.waitForSelector('#trip-linked-records [href="#record-edit/8"]');assert.equal(records[0].status,'private');
+ await page.locator('[data-tripa=start][data-action=preferences]').click();await page.waitForSelector('[data-preference-field]');if(width===390)await page.screenshot({path:'/tmp/trip-assistant-preferences-phone.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'suggestion layout '+width);await page.locator('[data-preference-field=food]').uncheck();await page.locator('[data-tripa=apply]').click();await page.waitForFunction(()=>!TripAssistant.busy);
+ await go('trip/1/prepare');await page.locator('[data-tripa=start][data-action=check_departure]').click();await page.waitForSelector('[data-check-index]');await page.locator('[data-check-index="1"]').uncheck();await page.locator('[data-tripa=apply]').click();await page.waitForFunction(()=>document.querySelectorAll('.trip-check').length===2);assert.equal(trip.checklist[0].done,true);assert.equal(trip.checklist[1].done,false);
+ await go('trip/1/notes');await page.waitForSelector('[data-tripa=delete-note]');await page.locator('[data-tripa=delete-note]').click();await page.waitForFunction(()=>document.querySelectorAll('.trip-note').length===0);assert.equal(uploadCount,2,'deleting a note never deletes actual uploads');
+ if(width===390)await page.screenshot({path:'/tmp/trip-assistant-notes-phone.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);
+ // Idle tabs issue zero recurring reads; active tasks use small status requests.
+ await go('travel-agent');const reads=()=>calls.filter(c=>c.method==='GET'&&c.path.startsWith('/api/admin/travel-agent')).length;const idle=reads();await page.waitForTimeout(650);assert.equal(reads(),idle,'idle tourism stops polling');
+ generic=[{id:77,prompt:'运行中的攻略',trip:{destination:'南京',days:2,people:3},status:'running',updated_at:now(),created_at:now()}];await page.locator('[data-planner=refresh]').click();await page.waitForSelector('[data-planner=select]');await page.locator('[data-planner=select]').click();await page.waitForTimeout(650);assert.ok(calls.filter(c=>c.path==='/api/admin/travel-agent/tasks/77').every(c=>c.search.includes('view=status')));
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});const hidden=reads();await page.waitForTimeout(650);assert.equal(reads(),hidden,'hidden tourism stops polling');await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+ await go('agent');const siteReads=()=>calls.filter(c=>c.method==='GET'&&c.path.startsWith('/api/admin/agent')).length;const siteIdle=siteReads();await page.waitForTimeout(650);assert.equal(siteReads(),siteIdle,'idle website stops polling');
+ website=[{id:88,kind:'change',prompt:'运行中的网站任务',status:'running',updated_at:now(),created_at:now()}];await page.locator('[data-agent=refresh]').click();await page.waitForSelector('[data-agent=select]');const beforeSelect=calls.filter(c=>c.path==='/api/admin/agent').length;await page.locator('[data-agent=select]').click();assert.equal(calls.filter(c=>c.path==='/api/admin/agent').length,beforeSelect,'select reads only detail');assert.ok(calls.filter(c=>c.path==='/api/admin/agent/tasks/88').every(c=>c.search==='?view=status'));
+ website[0].status='ready';website[0].updated_at=now();websiteReport={publishable:true,tests_passed:true,artifact:'a'.repeat(64),review_files:['trip_api.py'],manual_files:[],files:[{path:'trip_api.py',action:'修改',automatic:false,reviewable:true}],diff:'已审核的代码差异',tests:'检查通过',review_package:{id:'b'.repeat(32)}};await page.locator('[data-agent=refresh]').click();await page.waitForSelector('#agent-reviewed');assert.ok((await page.locator('#agent-detail').innerText()).includes('确认后发布'));assert.equal(await page.locator('#agent-detail [download]').getAttribute('href'),'/api/admin/agent/tasks/88/review-package');
+ const beforePublish=calls.filter(c=>c.path.endsWith('/publish')).length;await page.locator('[data-agent=publish]').click();assert.equal(calls.filter(c=>c.path.endsWith('/publish')).length,beforePublish,'business publishing requires the visible acknowledgement');await page.locator('#agent-reviewed').check();await page.locator('[data-agent=publish]').click();await page.waitForSelector('[data-agent=select][data-id="89"]');assert.equal(calls.filter(c=>c.path.endsWith('/publish')).length,beforePublish+1);
+ await go('account');const end=calls.length;await page.waitForTimeout(650);assert.equal(calls.length,end,'leaving assistants cancels their timers');assert.deepEqual(errors,[]);
+ await ctx.close();console.log('PASS '+width+': actual context, adjustment preview/conflict/version, JPEG multi-photo private note retry/edit/delete, recap and selected preference/checklist adoption, idle/hidden/navigation polling, small status, no redundant selection reads');
+ }}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

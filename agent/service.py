@@ -16,9 +16,11 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from artifacts import copy_code, manifest, fingerprint, compare, replace
 import travel_planner
+import trip_workflows
 from guide_visuals import compose
 import uuid
 import stat
+import zipfile
 
 LIVE=Path('/opt/travel-notes')
 BASE=Path('/opt/travel-agent')
@@ -87,7 +89,8 @@ def snapshot():
     versions=[p.name.removesuffix('.tar.gz') for p in sorted(Path('/var/backups/travel-notes-releases').glob('*.tar.gz'),reverse=True)]
     logged='Logged in using ChatGPT' in command(['/usr/local/sbin/travel-agent-auth','status'])
     return {'heartbeat':time.time(),'authenticated':logged,'auth':'ChatGPT 账号','health':health,
-            'disk_free':disk.free,'disk_total':disk.total,'versions':versions[:5],'concurrency':2,'lanes':{'website':1,'travel':1},'task_timeout_minutes':20}
+            'disk_free':disk.free,'disk_total':disk.total,'versions':versions[:5],'concurrency':2,'lanes':{'website':1,'travel':1},'task_timeout_minutes':20,
+            'execution':{'model':None,'effort':None,'source':'cli_default','label':'CLI 系统默认；未回传实际模型与推理强度'}}
 
 
 def heartbeat():
@@ -129,6 +132,8 @@ def launch(unit,user,cwd,args,log,writable,testing=False,input_path=None,memory=
 
 def prompt_for(task,work,resume_note='从当前正式代码创建开发副本。'):
     if travel_planner.is_travel(task):
+        if task['request'].get('workflow') in trip_workflows.ACTIONS:
+            return trip_workflows.prompt_for(task)
         history=[];parent=task['parent_id']
         for _ in range(8):
             if not parent: break
@@ -168,7 +173,8 @@ def begin_locked(task):
     baseline=root/'baseline';work=WORK/str(task_id)
     if travel:
         work.mkdir(mode=0o700)
-        (work/'response-schema.json').write_text(json.dumps(travel_planner.OUTPUT_SCHEMA))
+        schema=trip_workflows.output_schema(task) if task['request'].get('workflow') in trip_workflows.ACTIONS else travel_planner.OUTPUT_SCHEMA
+        (work/'response-schema.json').write_text(json.dumps(schema))
     else:
         copy_code(LIVE,baseline);copy_code(baseline,work)
     resume_note='从当前正式代码创建开发副本。'
@@ -199,9 +205,16 @@ def begin_locked(task):
 
 def model_output(path):
     data=path.read_bytes()[-2*1024**2:].decode(errors='replace');messages=[];progress=[];usage={};completed=False;errors=[];searches=set()
+    execution={'model':None,'effort':None,'source':'cli_default','label':'CLI 系统默认；未回传实际模型与推理强度'}
     for line in data.splitlines():
         try: event=json.loads(line)
         except ValueError: continue
+        if event.get('type') in ('session_meta','turn_context'):
+            meta=event.get('payload',event)
+            if not isinstance(meta,dict):continue
+            if isinstance(meta.get('model'),str) and re.fullmatch(r'[a-zA-Z0-9._/-]{1,100}',meta['model']):
+                effort=meta.get('effort') or meta.get('reasoning_effort')
+                execution.update(model=meta['model'],effort=effort if isinstance(effort,str) and effort in ('none','minimal','low','medium','high','xhigh','max','ultra') else None,source='runtime',label=meta['model'])
         if event.get('type')=='turn.completed': usage=event.get('usage',{});completed=True
         if event.get('type') in ('error','turn.failed'): errors.append(safe_text(str(event.get('message') or event.get('error') or '模型调用失败'))[:1000])
         item=event.get('item',{})
@@ -215,7 +228,27 @@ def model_output(path):
         if item.get('type')=='file_change' and event.get('type')=='item.completed':
             progress.extend('修改：'+str(change.get('path','')) for change in item.get('changes',[]))
     return {'result':safe_text('\n\n'.join(messages))[-24000:],'last_message':safe_text(messages[-1]) if messages else '',
-            'progress':progress[-15:],'usage':usage,'completed':completed,'errors':errors[-3:],'web_search_count':len(searches)}
+            'progress':progress[-15:],'usage':usage,'completed':completed,'errors':errors[-3:],'web_search_count':len(searches),'execution':execution}
+
+
+def review_package(active, report):
+    """A sealed candidate download, including protected files but no runtime data."""
+    directory=UPLOADS.parent/'agent-reviews';directory.mkdir(mode=0o700,exist_ok=True)
+    os.chown(directory,DB_USER.pw_uid,DB_USER.pw_gid)
+    name=uuid.uuid4().hex;target=directory/(name+'.zip')
+    steps=['候选版本：'+report['artifact'],'正式代码基线：'+report['baseline'],
+           '此包仅供审核，未改变线上网站。','先核对变更和测试；数据库、依赖与运维内容需单独迁移。',
+           '上线前备份并建立检查点；从同一基线安装，完成健康检查。','数据库变化不能只靠恢复旧代码回退，应另行核对迁移兼容性。']
+    if report['manual_files']:steps.append('需单独处理：'+', '.join(report['manual_files']))
+    with zipfile.ZipFile(target,'x',compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr('REVIEW.txt','\n'.join(steps))
+        bundle.writestr('manifest.json',json.dumps({k:report[k] for k in ('artifact','baseline','files')},ensure_ascii=False))
+        bundle.writestr('tests.txt',report.get('tests',''))
+        for item in report['files']:
+            source=active['root']/'candidate'/item['path']
+            if source.exists():bundle.write(source,'candidate/'+item['path'])
+    os.chown(target,DB_USER.pw_uid,DB_USER.pw_gid);target.chmod(0o600)
+    report['review_package']={'id':name,'bytes':target.stat().st_size}
 
 
 def start_tests(active,report):
@@ -247,7 +280,7 @@ def execution_report(active,usage=None):
         for key,number in value.items():
             if type(number) is int and number>=0:total[key]=total.get(key,0)+number
     return {'repair_attempt':active.get('repair_attempt',0),'repair_history':active.get('repair_history',[]),
-            'code_start':active.get('resume_note',''),'usage':total}
+            'code_start':active.get('resume_note',''),'usage':total,'execution':active.get('execution',{})}
 
 
 def start_repair(active,report):
@@ -287,8 +320,10 @@ def finish_step(active):
     if active['phase']=='model':
         model_log=active.get('model_log',root/'model.log');data=model_output(model_log)
         travel=travel_planner.is_travel(task)
+        active['execution']=data.get('execution',{})
         if time.time()-active['last_save']>3:
-            update(task_id,result=('正在检索资料并整理完整攻略，请稍候。' if travel else data['result'] or '正在执行任务…'),
+            message={'adjust_day':'正在结合当前路线调整所选日期。','check_departure':'正在核对出发准备与官方信息。','recap':'正在根据真实随记整理旅行回忆。','preferences':'正在根据真实随记总结偏好建议。'}.get(task['request'].get('workflow'),'正在检索资料并整理完整攻略，请稍候。')
+            update(task_id,result=(message if travel else data['result'] or '正在执行任务…'),
                    report={**execution_report(active,data['usage']),'progress':data['progress'],'web_search_count':data['web_search_count'],
                            'outcome':'repairing' if active.get('repair_attempt') else 'working'})
             active['last_save']=time.time()
@@ -298,15 +333,23 @@ def finish_step(active):
             message='\n'.join(data['errors']) or safe_text(model_log.read_text(errors='replace')[-1500:])
             update(task_id,'failed',data['result']+'\n任务未完成：'+message,{**execution_report(active,data['usage']),'reason':message,'publishable':False});return True
         if travel:
+            if task['request'].get('workflow') in trip_workflows.ACTIONS:
+                try: result=trip_workflows.parse_answer(data['last_message'],task['request'])
+                except ValueError as error:
+                    update(task_id,'failed',str(error),{'reason':str(error),'progress':data['progress'],'web_search_count':data['web_search_count']});return True
+                if task['request']['workflow']=='check_departure' and not data['web_search_count']:
+                    result['warnings'].insert(0,'本次未完成实时检索，以下为待核实的出发检查建议。')
+                update(task_id,'done',result['body'],{'workflow_result':result,'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count'],'execution':data.get('execution',{})})
+                return True
             try: guide=travel_planner.parse_answer(data['last_message'])
             except ValueError as error:
                 update(task_id,'failed',str(error),{'progress':data['progress'],'web_search_count':data['web_search_count']});return True
             if guide.get('highlights'):
                 start_photos(active,guide,data);return False
-            update(task_id,'done',guide['body'],{'travel_guide':guide,'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count']})
+            update(task_id,'done',guide['body'],{'travel_guide':guide,'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count'],'execution':data.get('execution',{})})
             return True
         if task['kind']!='change':
-            update(task_id,'done',data['result'],{'usage':data['usage'],'progress':data['progress']});return True
+            update(task_id,'done',data['result'],{'usage':data['usage'],'progress':data['progress'],'execution':data.get('execution',{})});return True
         # The transient cgroup has stopped; model processes can no longer mutate the artifact.
         candidate=root/'candidate'
         if candidate.exists():shutil.rmtree(candidate)
@@ -320,20 +363,23 @@ def finish_step(active):
         if all(f['path']=='README.md' for f in report['files']):
             report.update(outcome='documentation',reason='此次只修改了说明文档，尚未实现网站功能；可继续任务落实代码。')
             update(task_id,'done',report=report);return True
-        if report['manual_files']:
-            report.update(outcome='needs_review',reason='涉及数据库、依赖、运维或新增后端模块，需单独审核部署；当前网站未改变。');update(task_id,'manual',report=report);return True
         report['outcome']='testing'
         start_tests(active,report);return False
     if process.poll() is None: return False
     stop_unit(active['unit'])
     report=active['report'];report['tests']=safe_text((root/'tests.log').read_text(errors='replace'))[-16000:]
-    report['tests_passed']=process.returncode==0;report['publishable']=process.returncode==0
+    report['tests_passed']=process.returncode==0;report['publishable']=process.returncode==0 and not report.get('manual_files',[])
     report.update(outcome='candidate' if report['publishable'] else 'tests_failed',
                   reason='测试通过，候选版本尚未发布。' if report['publishable'] else '自动测试未通过，网站未改变。请查看错误后继续修复。')
-    (root/'report.json').write_text(json.dumps(report,ensure_ascii=False))
-    if not report['publishable'] and not active.get('repair_attempt') and time.time()-active.get('task_started',active['started'])<900:
+    if report['tests_passed'] and report.get('manual_files'):
+        report.update(outcome='needs_review',reason='候选测试通过；涉及数据库、依赖或系统运维，需要审核下载包并单独迁移。正式网站未改变。')
+    elif report['publishable'] and report.get('review_files'):
+        report.update(reason='候选测试通过；请核对后台业务模块变更，再确认发布。正式网站未改变。')
+    if not report['tests_passed'] and not active.get('repair_attempt') and time.time()-active.get('task_started',active['started'])<900:
         start_repair(active,report);return False
-    update(task_id,'ready' if report['publishable'] else 'failed',report=report)
+    if (root/'candidate').is_dir() and {'artifact','baseline','files'}<=set(report):review_package(active,report)
+    (root/'report.json').write_text(json.dumps(report,ensure_ascii=False))
+    update(task_id,'ready' if report['publishable'] else 'manual' if report['tests_passed'] else 'failed',report=report)
     return True
 
 
@@ -384,7 +430,7 @@ def finish_photos(active):
                 guide['body']=compose(guide,cached)
                 if len(guide['body'])>100000:raise ValueError('图文攻略过长，请减少目的地或分段规划后重试')
                 guide['cover']=next((v['url'] for k,v in cached.items() if k.startswith('highlights-')),'/static/assets/lake.jpg')
-                report={'travel_guide':guide,'photos':cached,'photo_count':len(cached),'photo_missing':[item['name'] for field in ('highlights','foods') for i,item in enumerate(guide.get(field,[])) if f'{field}-{i}' not in cached],'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count']}
+                report={'travel_guide':guide,'photos':cached,'photo_count':len(cached),'photo_missing':[item['name'] for field in ('highlights','foods') for i,item in enumerate(guide.get(field,[])) if f'{field}-{i}' not in cached],'usage':data['usage'],'progress':data['progress'],'web_search_count':data['web_search_count'],'execution':data.get('execution',{})}
                 c.execute("UPDATE agent_tasks SET status='done',result=%s,report=%s,updated_at=now() WHERE id=%s",(guide['body'],Jsonb(report),task_id))
         except Exception:
             for path in created:path.unlink(missing_ok=True)
@@ -418,6 +464,8 @@ def deploy(task):
         source=PRIVATE/str(int(task['parent_id']));report=json.loads((source/'report.json').read_text());candidate=source/'candidate'
         if not report.get('publishable') or task['request'].get('artifact')!=report['artifact'] or fingerprint(manifest(candidate))!=report['artifact']:
             raise ValueError('候选版本校验失败，发布已取消')
+        if report.get('manual_files'): raise ValueError('候选含数据库、依赖或运维变更，需要单独迁移')
+        if report.get('review_files') and task['request'].get('reviewed') is not True: raise ValueError('请先核对并确认后台业务模块变更')
         if fingerprint(manifest(LIVE))!=report['baseline']: raise ValueError('正式网站已更新，请基于当前版本重新生成候选')
     else:
         version=task['request'].get('version','')
@@ -474,6 +522,12 @@ def prune_artifacts():
         if task and task['status']=='ready':
             report=task['report'];report.update(publishable=False,reason='候选文件已按保留策略清理，请继续任务重新生成。')
             update(int(folder.name),'manual',report=report)
+        metadata=folder/'report.json'
+        if metadata.is_file():
+            try:
+                name=json.loads(metadata.read_text()).get('review_package',{}).get('id','')
+                if re.fullmatch('[a-f0-9]{32}',name):(UPLOADS.parent/'agent-reviews'/(name+'.zip')).unlink(missing_ok=True)
+            except (OSError,ValueError,TypeError):pass
         shutil.rmtree(folder)
 
 

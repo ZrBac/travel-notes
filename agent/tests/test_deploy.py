@@ -43,5 +43,30 @@ class DeployTests(unittest.TestCase):
                 service.recover_release()
             self.assertEqual((live/'app.py').read_text(),'version=1\n');self.assertFalse((private/'deployment.json').exists())
 
+    def test_business_review_is_checked_again_before_any_release_side_effects(self):
+        for reviewed in (False,True):
+            with self.subTest(reviewed=reviewed),tempfile.TemporaryDirectory() as d:
+                live,private,task=self.setup(Path(d))
+                (live/'trip_api.py').write_text('v=1')
+                candidate=private/'1'/'candidate';(candidate/'trip_api.py').write_text('v=2')
+                report=compare(live,candidate);report['publishable']=True
+                (private/'1'/'report.json').write_text(json.dumps(report));task['request']={'artifact':report['artifact'],'reviewed':reviewed}
+                with patch.object(service,'LIVE',live),patch.object(service,'PRIVATE',private),patch.object(service,'checked',return_value='') as controls,patch.object(service,'update'),patch.object(service,'probe',return_value=True):
+                    if reviewed:
+                        service.deploy(task);self.assertEqual((live/'trip_api.py').read_text(),'v=2')
+                    else:
+                        with self.assertRaises(ValueError):service.deploy(task)
+                        controls.assert_not_called();self.assertEqual((live/'trip_api.py').read_text(),'v=1')
+
+    def test_protected_candidate_still_cannot_publish_even_with_reviewed_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            live,private,task=self.setup(Path(d));candidate=private/'1'/'candidate'
+            (candidate/'schema.sql').write_text('new schema')
+            report=compare(live,candidate);report['publishable']=True
+            (private/'1'/'report.json').write_text(json.dumps(report));task['request']={'artifact':report['artifact'],'reviewed':True}
+            with patch.object(service,'LIVE',live),patch.object(service,'PRIVATE',private),patch.object(service,'checked') as controls,patch.object(service,'update'):
+                with self.assertRaises(ValueError):service.deploy(task)
+                controls.assert_not_called();self.assertFalse((live/'schema.sql').exists())
+
 
 if __name__=='__main__':unittest.main()

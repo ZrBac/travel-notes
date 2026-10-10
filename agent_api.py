@@ -2,10 +2,12 @@
 import re
 from datetime import datetime, timezone
 from flask import abort, jsonify, request
+from flask import send_file
+from pathlib import Path
 from psycopg.types.json import Jsonb
 
 
-def register(app, db, payload, audit):
+def register(app, db, payload, audit, data_path):
     def task(task_id, lock=False):
         row = db().execute("SELECT * FROM agent_tasks WHERE id=%s AND request->>'assistant' IS DISTINCT FROM 'travel'" + (" FOR UPDATE" if lock else ""), (task_id,)).fetchone()
         if not row: abort(404, description='任务不存在')
@@ -29,7 +31,20 @@ def register(app, db, payload, audit):
         row = task(task_id)
         # Internal filesystem state and raw model output never cross the API.
         fields = ('id','kind','prompt','status','parent_id','result','report','created_at','updated_at')
+        if request.args.get('view')=='status':
+            safe={key:row[key] for key in fields if key not in ('result','report')}
+            safe.update(result=row['result'][-6000:],report={k:v for k,v in row['report'].items() if k in ('outcome','reason','repair_attempt','progress','execution')})
+            return jsonify(task=safe)
         return jsonify(task={key:row[key] for key in fields})
+
+    @app.get('/api/admin/agent/tasks/<int:task_id>/review-package')
+    def agent_review_package(task_id):
+        row=task(task_id);package=row['report'].get('review_package',{})
+        name=package.get('id','')
+        if not isinstance(name,str) or not re.fullmatch('[a-f0-9]{32}',name): abort(404,description='此任务没有审核包，请继续任务重新检查')
+        path=Path(data_path)/'agent-reviews'/(name+'.zip')
+        if not path.is_file() or path.is_symlink(): abort(404,description='审核包已清理，请继续任务重新检查')
+        return send_file(path,as_attachment=True,download_name='website-review-'+str(task_id)+'.zip',mimetype='application/zip',max_age=0)
 
     @app.post('/api/admin/agent/tasks')
     def agent_create():
@@ -79,9 +94,11 @@ def register(app, db, payload, audit):
         digest=data.get('artifact')
         if row['status']!='ready' or not row['report'].get('publishable') or digest!=row['report'].get('artifact'):
             abort(409,description='候选版本已变化或尚未通过检查，请刷新后查看')
+        if row['report'].get('manual_files'): abort(409,description='这个版本涉及数据库、依赖或运维，请先完成单独迁移')
+        if row['report'].get('review_files') and data.get('reviewed') is not True: abort(400,description='请核对后台业务模块的差异与测试，并勾选确认')
         if db().execute("SELECT id FROM agent_tasks WHERE kind='publish' AND parent_id=%s AND status IN ('queued','publishing','running')",(task_id,)).fetchone():
             abort(409,description='此版本正在发布')
-        new=db().execute("INSERT INTO agent_tasks(kind,prompt,parent_id,request) VALUES('publish','发布已审核的候选版本',%s,%s) RETURNING id",(task_id,Jsonb({'artifact':digest}))).fetchone()
+        new=db().execute("INSERT INTO agent_tasks(kind,prompt,parent_id,request) VALUES('publish','发布已审核的候选版本',%s,%s) RETURNING id",(task_id,Jsonb({'artifact':digest,'reviewed':data.get('reviewed') is True}))).fetchone()
         audit('agent.publish_request',task_id);db().commit();return jsonify(id=new['id']),201
 
     @app.post('/api/admin/agent/rollback')

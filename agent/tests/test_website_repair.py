@@ -45,8 +45,8 @@ class WebsiteRepairTests(unittest.TestCase):
    with patch.object(service,'read',return_value={'cancel_requested':False}),patch.object(service,'stop_unit'),patch.object(service,'update',side_effect=service.DatabaseBusy),patch.object(service,'own_tree'),patch.object(service,'launch') as launch:
     with self.assertRaises(service.DatabaseBusy):service.finish_step(active)
     self.assertFalse(active.get('repair_attempt'));launch.assert_not_called()
- def test_reseal_removes_stale_files_and_manual_changes_do_not_retry(self):
-  for name,expected in [('app.py','tests'),('migration.sql','manual'),('README.md','done')]:
+ def test_reseal_removes_stale_files_and_migrations_are_tested_before_review(self):
+  for name,expected in [('app.py','tests'),('migration.sql','tests'),('README.md','done')]:
    with self.subTest(name=name),tempfile.TemporaryDirectory() as d:
     root=Path(d);active=self.active(root,'model');baseline=root/'baseline';baseline.mkdir();(baseline/'app.py').write_text('v=1');(baseline/'README.md').write_text('old')
     for p in baseline.iterdir():(active['work']/p.name).write_text(p.read_text())

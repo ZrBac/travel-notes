@@ -73,6 +73,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
     @app.put('/api/admin/travel-agent/preferences')
     def travel_preferences_save():
         preferences = normalize_family(payload().get('preferences'))
+        db().execute('SELECT pg_advisory_xact_lock(74390516,%s)',(session['admin_id'],))
         # Hold the account row until commit so removal cannot leave orphan preferences.
         account = db().execute('SELECT id,session_version FROM admins WHERE id=%s FOR KEY SHARE', (session['admin_id'],)).fetchone()
         if not account or account['session_version'] != session.get('version'):
@@ -93,17 +94,16 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         row = db().execute("SELECT value FROM settings WHERE key='agent_service'").fetchone()
         info = row['value'] if row else {}
         return {'online':datetime.now(timezone.utc).timestamp()-info.get('heartbeat',0)<300,
-                'authenticated':bool(info.get('authenticated')), 'concurrency':info.get('concurrency',1), 'lanes':info.get('lanes',{})}
+                'authenticated':bool(info.get('authenticated')), 'concurrency':info.get('concurrency',1), 'lanes':info.get('lanes',{}),'execution':info.get('execution',{})}
 
     @app.get('/api/admin/travel-agent')
     def travel_index():
         before = request.args.get('before', '')
         if before and (not before.isascii() or not before.isdigit() or len(before)>18 or int(before)<1):
             abort(400, description='分页位置无效')
-        rows = db().execute('SELECT id,prompt,status,parent_id,created_at,updated_at,request FROM agent_tasks WHERE '+SCOPE+
+        rows = db().execute("SELECT id,prompt,status,parent_id,created_at,updated_at,request->'trip' trip,request->'guide_id' guide_id,request->>'workflow' workflow,request->'attached_trip_id' attached_trip_id FROM agent_tasks WHERE "+SCOPE+
                             (' AND id<%s' if before else '')+' ORDER BY id DESC LIMIT 51', (int(before),) if before else ()).fetchall()
-        items = [{**{key:row[key] for key in ('id','prompt','status','parent_id','created_at','updated_at')},
-                  'trip':row['request'].get('trip',{}), 'guide_id':row['request'].get('guide_id')} for row in rows[:50]]
+        items = [{**row,'trip':row['trip'] or {}} for row in rows[:50]]
         return jsonify(tasks=items, next_before=rows[49]['id'] if len(rows)>50 else None, service=service(), family_preferences=family_preferences())
 
     @app.get('/api/admin/travel-agent/tasks/<int:task_id>')
@@ -111,12 +111,17 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
         row = task(task_id)
         report = row['report']; guide = report.get('travel_guide')
         result = {key:row[key] for key in ('id','prompt','status','parent_id','result','created_at','updated_at')}
+        if request.args.get('view')=='status':
+            result.update(result=row['result'][-6000:],trip=row['request'].get('trip',{}),progress=report.get('progress',[])[-15:],execution=report.get('execution',{}),workflow=row['request'].get('workflow'),attached_trip_id=row['request'].get('attached_trip_id'),guide=None,html='')
+            return jsonify(task=result)
         result.update(trip=row['request'].get('trip',{}), guide_id=row['request'].get('guide_id'),
                       guide=guide, photo_count=report.get('photo_count',0), web_search_count=report.get('web_search_count',0),
                       progress=report.get('progress',[]),photo_missing=report.get('photo_missing',[]),
                       html=render_markdown(guide['body']) if row['status']=='done' and guide else '')
         result['destinations'] = destinations(guide) if guide else []
         result['publications'] = row['request'].get('publications', {})
+        result.update(workflow=row['request'].get('workflow'),attached_trip_id=row['request'].get('attached_trip_id'),
+                      context={k:v for k,v in (row['request'].get('context') or {}).items() if k in ('trip','plan')},workflow_result=report.get('workflow_result'),execution=report.get('execution',{}))
         return jsonify(task=result)
 
     def publication_guides(row, mode):
@@ -205,11 +210,21 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
             key:value for key,value in family_preferences()['preferences'].items() if value is not None}
         supplied = data.get('trip', {})
         if not isinstance(supplied, dict): abort(400, description='旅行条件格式不正确')
+        attached=data.get('attached_trip_id',parent['request'].get('attached_trip_id') if parent else None)
+        context=None
+        if parent and parent['request'].get('workflow'):
+            abort(400,description='本次旅行的调整或回忆任务请在旅行页面继续，避免当成新攻略')
+        if attached is not None:
+            from trip_assistant_api import trip_context
+            context=trip_context(db,attached);actual=context['trip']
+            base.update((context.get('plan') or {}).get('conditions',{}))
+            supplied={**supplied,'destination':actual['destination'],'days':actual['days'],'people':actual['people'],
+                      'dates':actual['start_date']+' 至 '+actual['end_date'],'companions':actual['companions']}
         trip = normalize_trip({**base, **supplied})
         count = db().execute("SELECT count(*) AS n FROM agent_tasks WHERE request->>'assistant'='travel' AND status IN ('queued','running','testing','publishing')").fetchone()['n']
         if count >= 5: abort(429, description='助手队列已满，请等现有任务完成后再提交')
         row = db().execute("INSERT INTO agent_tasks(kind,prompt,parent_id,request) VALUES('chat',%s,%s,%s) RETURNING id",
-                           (prompt.strip(),parent_id,Jsonb({'assistant':'travel','trip':trip}))).fetchone()
+                           (prompt.strip(),parent_id,Jsonb({'assistant':'travel','trip':trip,**({'attached_trip_id':attached,'context':context} if context else {})}))).fetchone()
         audit('travel_agent.submit',row['id'],{'mode':trip['mode']}); db().commit()
         return jsonify(id=row['id']),201
 
