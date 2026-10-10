@@ -73,7 +73,9 @@ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await p.evaluate(()=>{window.slowBody=true;void route();});await p.waitForSelector('[data-action=retry-page]');assert.ok((await p.locator('#main').innerText()).includes('加载超时'),'timeout also covers reading the response body');
   await p.evaluate(()=>{window.slowBody=false;});await p.locator('[data-action=retry-page]').click();await p.waitForSelector('#settings-form');
   await p.evaluate(()=>{window.writeResult=null;api('/test-write',{method:'POST',body:{title:'保留写入'}}).then(v=>window.writeResult=v).catch(e=>window.writeResult={error:e.message});location.hash='account';});
-  await p.waitForSelector('#account-form');await p.waitForFunction(()=>window.writeResult!==null);assert.deepEqual(await p.evaluate(()=>writeResult),{ok:true});assert.deepEqual(writes,[{method:'POST',body:{title:'保留写入'},csrf:'test-csrf'}]);
+  await p.waitForFunction(()=>location.hash==='#settings');await p.waitForSelector('#settings-form');
+  await p.waitForFunction(()=>window.writeResult!==null);assert.deepEqual(await p.evaluate(()=>writeResult),{ok:true});assert.deepEqual(writes,[{method:'POST',body:{title:'保留写入'},csrf:'test-csrf'}]);
+  await p.evaluate(()=>location.hash='account');await p.waitForSelector('#account-form');
   assert.equal(await p.evaluate(()=>adminDataCache.size),0,'real writes still invalidate cache');
   assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'mobile overflow');
   await p.evaluate(()=>api('/test-expired').catch(()=>{}));await p.waitForSelector('#login-page:not([hidden])');assert.equal(await p.locator('#admin-shell').isVisible(),false);assert.equal(await p.locator('#main').innerText(),'');assert.equal(await p.evaluate(()=>adminDataCache.size),0);

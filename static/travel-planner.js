@@ -56,7 +56,7 @@ const TravelPlanner = (() => {
     const data=await api(endpoint);if(gen!==state.generation||token!==epoch)return;
     tasks=data.tasks;nextBefore=data.next_before;family=data.family_preferences||{preferences:{},updated_at:null};familyDirty=false;tripDirty=false;if(!selected)selected=tasks[0]?.id||null;
     $('#main').innerHTML=heading('为自己和家人，安排下一次出发。','记住常用偏好，结合这次日期与同行情况，整理一份图文旅行计划。')+`
-      <section class="panel planner-intro"><div><span class="eyebrow">家庭出游规划</span><h2>旅游助手</h2><p>行程 · 景点美食 · 住宿预算 · 预约与天气备选</p></div><span id="planner-service" role="status"></span></section>
+      <section class="panel planner-intro"><div><span class="eyebrow">家庭出游规划</span><h2>规划一份图文攻略</h2><p>行程 · 景点美食 · 住宿预算 · 预约与天气备选</p></div><span id="planner-service" role="status"></span></section>
       ${familyPanel()}
       <div class="planner-layout"><section class="panel planner-compose"><div class="panel-top"><h2>这次，想去哪里？</h2><button class="button small" type="button" data-planner="example">填入家庭出游示例</button></div>
       <form id="planner-form">
@@ -116,7 +116,7 @@ const TravelPlanner = (() => {
   function renderDetail(){
     const t=detail,g=t.guide,complete=t.status==='done'&&g;
     const controls=['queued','running'].includes(t.status)?`<button type="button" class="button small" data-planner="cancel" data-id="${t.id}">停止生成</button>`:active(t.status)?'':`<button type="button" class="button small" data-planner="followup">继续修改</button>`;
-    $('#planner-detail').innerHTML=`<div class="panel-top"><div><span class="eyebrow">${complete?'YOUR TRAVEL PLAN':'TRAVEL RESEARCH'} · #${t.id}</span><h2>${esc(g?.title||t.trip.destination||'旅行攻略参考')}</h2></div><div class="actions"><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span>${controls}${!active(t.status)?`<button type="button" class="button small danger" data-planner="delete" data-id="${t.id}">删除记录</button>`:''}</div></div>
+    $('#planner-detail').innerHTML=`<div class="panel-top"><div><span class="eyebrow">${complete?'已完成的旅行计划':'正在规划'} · #${t.id}</span><h2>${esc(g?.title||t.trip.destination||'旅行攻略参考')}</h2></div><div class="actions"><span class="agent-state ${esc(t.status)}">${esc(labels[t.status]||t.status)}</span>${controls}${!active(t.status)?`<button type="button" class="button small danger" data-planner="delete" data-id="${t.id}">删除记录</button>`:''}</div></div>
       ${t.parent_id?`<p class="help">根据 <button type="button" class="planner-text-button" data-planner="select" data-id="${t.parent_id}">#${t.parent_id} 的方案</button> 继续完善</p>`:''}
       <details><summary>查看这次需求</summary><p class="agent-request">${esc(t.prompt)}</p><p class="help">${esc([t.trip.origin&&'出发：'+t.trip.origin,t.trip.dates,`${t.trip.days} 天 / ${t.trip.people} 人`,t.trip.rooms,t.trip.budget,t.trip.companions,paceNames[t.trip.pace]&&'节奏：'+paceNames[t.trip.pace],t.trip.walking,t.trip.transport,t.trip.food&&'饮食：'+t.trip.food,t.trip.preferences,t.trip.excluded&&'排除：'+t.trip.excluded].filter(Boolean).join(' · '))}</p></details>
       ${complete?`<p class="planner-summary">${esc(g.summary)}</p><div class="planner-meta"><span>${esc(g.destination)} · ${g.days} 天</span><span>${esc(g.season)}</span><span>${esc(g.budget)}</span></div>
