@@ -1,6 +1,6 @@
 /* Private journeys: ordinary APIs handle viewing, adoption and preparation. */
 const Trips=(()=>{
- const phases={upcoming:'待出发',travelling:'旅行中',completed:'已归来',archived:'已归档',trash:'已删除'};
+ const phases={upcoming:'待出发',travelling:'旅行中',completed:'已归来',archived:'已归档',trash:'已移入回收站'};
  const periods=['上午','下午','晚上'];
  let epoch=0,busy=false,current=null,selectedDay=1,source=null,targets=[],targetPage=1,targetPages=1;
  const dirtyForms=new Set();
@@ -29,9 +29,9 @@ const Trips=(()=>{
   const data=await api(path()+'?'+query);if(!here(token)||gen!==state.generation)return;
   const trash=query.get('state')==='trash',filtered=!!(query.get('q')||query.get('state')),focus=!filtered&&data.page===1?data.focus:null;
   const rows=data.trips.filter(t=>t.id!==focus?.id);
-  const filters=data.total||filtered?`<form id='trip-filter' class='trip-list-filter'>${input('q','搜索旅行',query.get('q')||'',"maxlength='120' placeholder='目的地或旅行名称'")}<label>显示范围<select name='state'><option value=''>全部旅行</option><option value='active' ${query.get('state')==='active'?'selected':''}>未归档</option><option value='archived' ${query.get('state')==='archived'?'selected':''}>已归档</option><option value='trash' ${trash?'selected':''}>回收站</option></select></label><button class='button secondary' type='submit'>筛选</button></form>`:'';
-  const cards=rows.length?`<section class='trip-grid'>${rows.map(t=>`<article class='panel trip-card'><div class='panel-top'><span class='badge'>${esc(phases[t.phase])}</span><span class='help'>${t.days} 天 · ${t.people} 人</span></div><h2>${trash?esc(t.title):`<a href='#trip/${t.id}'>${esc(t.title)}</a>`}</h2><p>${esc(t.destination)}</p><p class='help'>${esc(range(t))} · ${t.plan_version?'第 '+t.plan_version+' 版计划':'待安排行程'}</p><div class='actions'>${trash?`<button class='button secondary' type='button' data-trip='restore-trip' data-id='${t.id}' data-revision='${t.revision}'>恢复旅行</button>`:`<a class='button secondary' href='#trip/${t.id}'>打开这趟旅行 →</a>${removalButton(t)}`}</div></article>`).join('')}</section>`:trash?empty('旅行回收站是空的','误删的旅行可以在这里恢复。'):focus?'':filtered?empty('没有匹配的旅行','调整筛选条件，或查看全部旅行。')+`<a class='button' href='#trips'>全部旅行</a>`:homeCard(null);
-  $('#main').innerHTML=heading(trash?'旅行回收站':'我的旅行',trash?'恢复后保留原来的日期、人数、行程、准备事项和随记。':'查看行程、准备事项和照片随记。',trash?'<a class="button secondary" href="#trips">返回我的旅行</a>':listActions())+(focus?homeCard(focus):'')+filters+cards+(data.pages>1?`<div class='pagination'><button class='button small' data-trip='page' data-page='${data.page-1}' ${data.page===1?'disabled':''}>上一页</button><span>${data.page} / ${data.pages}</span><button class='button small' data-trip='page' data-page='${data.page+1}' ${data.page===data.pages?'disabled':''}>下一页</button></div>`:'');
+  const filters=data.total||filtered?`<form id='trip-filter' class='trip-list-filter'>${input('q','搜索旅行',query.get('q')||'',"maxlength='120' placeholder='目的地或旅行名称'")}${trash?'':`<label>显示范围<select name='state'><option value=''>全部旅行</option><option value='active' ${query.get('state')==='active'?'selected':''}>未归档</option><option value='archived' ${query.get('state')==='archived'?'selected':''}>已归档</option></select></label>`}<button class='button secondary' type='submit'>筛选</button></form>`:'';
+  const cards=rows.length?`<section class='trip-grid'>${rows.map(t=>`<article class='panel trip-card'><div class='panel-top'><span class='badge'>${esc(phases[t.phase])}</span><span class='help'>${t.days} 天 · ${t.people} 人</span></div><h2>${trash?esc(t.title):`<a href='#trip/${t.id}'>${esc(t.title)}</a>`}</h2><p>${esc(t.destination)}</p><p class='help'>${esc(range(t))} · ${t.plan_version?'第 '+t.plan_version+' 版计划':'待安排行程'}</p><div class='actions'>${trash?`<button class='button secondary' type='button' data-trip='restore-trip' data-id='${t.id}' data-revision='${t.revision}'>恢复旅行</button><button class='button danger' type='button' data-trip='purge-trip' data-id='${t.id}' data-revision='${t.revision}' data-title='${esc(t.title)}'>彻底删除</button>`:`<a class='button secondary' href='#trip/${t.id}'>打开这趟旅行 →</a>${removalButton(t)}`}</div></article>`).join('')}</section>`:trash?empty('旅行回收站是空的','误删的旅行可以在这里恢复。'):focus?'':filtered?empty('没有匹配的旅行','调整筛选条件，或查看全部旅行。')+`<a class='button' href='#trips'>全部旅行</a>`:homeCard(null);
+  $('#main').innerHTML=heading(trash?'旅行回收站':'我的旅行',trash?'可恢复旅行，或彻底删除；彻底删除后无法从回收站找回。':'查看行程、准备事项和照片随记。',trash?'<a class="button secondary" href="#trips">返回我的旅行</a>':listActions())+(focus?homeCard(focus):'')+filters+cards+(data.pages>1?`<div class='pagination'><button class='button small' data-trip='page' data-page='${data.page-1}' ${data.page===1?'disabled':''}>上一页</button><span>${data.page} / ${data.pages}</span><button class='button small' data-trip='page' data-page='${data.page+1}' ${data.page===data.pages?'disabled':''}>下一页</button></div>`:'');
   bind();
  }
  function sourceQuery(parts){const [kind,id,destination]=parts;const query=new URLSearchParams();if(kind==='task')query.set('task_id',id);else if(kind==='guide')query.set('guide_id',id);else return null;if(destination)query.set('destination',decodeURIComponent(destination));return query;}
@@ -108,7 +108,7 @@ const Trips=(()=>{
  async function submit(event){
   const form=event.target;if(!form.matches('form[data-trip-form],#trip-filter'))return;event.preventDefault();event.stopImmediatePropagation();if(busy||!form.reportValidity())return;
   const data=Object.fromEntries(new FormData(form));
-  if(form.id==='trip-filter'){location.hash='trips?'+new URLSearchParams(data);return;}
+  if(form.id==='trip-filter'){if(new URLSearchParams(location.hash.split('?')[1]||'').get('state')==='trash')data.state='trash';location.hash='trips?'+new URLSearchParams(data);return;}
   try{
    if(form.id==='trip-create-form'){
     const target=targets.find(t=>t.id===Number(data.target));
@@ -132,14 +132,15 @@ const Trips=(()=>{
  async function click(event){
   const node=event.target.closest('[data-trip]');if(!node||busy||TripAssistant.busy)return;const action=node.dataset.trip;
   try{
-   if(action==='trash-trip'||action==='restore-trip'){
-    const restore=action==='restore-trip',id=Number(node.dataset.id),revision=Number(node.dataset.revision);
-    if(!restore&&!confirm('删除「'+node.dataset.title+'」？\n行程、准备事项和随记将保留，可从旅行回收站恢复。'+(state.dirty?'\n本页未保存的修改将丢弃。':'')))return;
+   if(action==='trash-trip'||action==='restore-trip'||action==='purge-trip'){
+    const restore=action==='restore-trip',purge=action==='purge-trip',id=Number(node.dataset.id),revision=Number(node.dataset.revision);
+    if(!restore&&!purge&&!confirm('删除「'+node.dataset.title+'」？\n行程、准备事项和随记将保留，可从旅行回收站恢复。'+(state.dirty?'\n本页未保存的修改将丢弃。':'')))return;
+    if(purge&&!confirm('彻底删除「'+node.dataset.title+'」？\n这趟旅行的行程、准备事项和随记将永久删除，无法从回收站恢复。\n独立发布的足迹和图片素材仍保留。'))return;
     const token=epoch;busy=true;node.disabled=true;
     try{
-     await api(path(id)+(restore?'/restore':''),{method:restore?'POST':'DELETE',body:{revision}});
+     await api(path(id)+(restore?'/restore':purge?'/purge':''),{method:restore?'POST':'DELETE',body:{revision,...(purge?{confirm_title:node.dataset.title}:{})}});
      if(!here(token))return;
-     dirtyForms.clear();state.dirty=false;toast(restore?'旅行已恢复':'已移入旅行回收站，可随时恢复');
+     dirtyForms.clear();state.dirty=false;toast(restore?'旅行已恢复':purge?'旅行已彻底删除':'已移入旅行回收站，可随时恢复');
      if(restore||!state.route.startsWith('trips'))location.hash='trips';else await route();
     }finally{busy=false;if(node.isConnected)node.disabled=false;}
     return;

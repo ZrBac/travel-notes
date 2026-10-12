@@ -105,6 +105,53 @@ class TripTrashTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT count(*) n FROM trips').fetchone()['n'],1)
             self.assertEqual(c.execute('SELECT note FROM trip_notes WHERE id=%s',(note_id,)).fetchone()['note'],'真实随记')
 
+    def test_purge_requires_authentication_confirmation_trash_and_no_active_task(self):
+        self.login();trip=self.new_trip()['trip'];tid=trip['id'];path=f'/api/admin/trips/{tid}/purge'
+        data={'revision':trip['revision'],'confirm_title':trip['title']}
+        self.assertEqual(self.visitor.delete(path,json=data).status_code,401)
+        self.assertEqual(self.client.delete(path,json=data).status_code,403)
+        self.assertEqual(self.mutate('DELETE',path,data).status_code,409)
+        self.assertEqual(self.trash(trip).status_code,200)
+        recycled=self.client.get('/api/admin/trips?state=trash').json['trips'][0]
+        data['revision']=recycled['revision']
+        self.assertEqual(self.mutate('DELETE',path,{**data,'revision':trip['revision']}).status_code,409)
+        for title in (None,'其他旅行'):
+            self.assertEqual(self.mutate('DELETE',path,{**data,'confirm_title':title}).status_code,400)
+        with connect() as c:
+            task=c.execute("INSERT INTO agent_tasks(kind,prompt,status,request,report) VALUES('chat','复核','running',%s,'{}') RETURNING id",
+                           (Jsonb({'assistant':'travel','attached_trip_id':tid}),)).fetchone()['id']
+        self.assertEqual(self.mutate('DELETE',path,data).status_code,409)
+        with connect() as c:c.execute("UPDATE agent_tasks SET status='done' WHERE id=%s",(task,))
+        purged=self.mutate('DELETE',path,data);self.assertEqual(purged.status_code,200,purged.json)
+        self.assertEqual(purged.headers['Cache-Control'],'no-store')
+        self.assertEqual(self.client.get('/api/admin/trips?state=trash').json['total'],0)
+        self.assertEqual(self.mutate('POST',f'/api/admin/trips/{tid}/restore',{'revision':data['revision']}).status_code,404)
+        with connect() as c:
+            self.assertEqual(c.execute("SELECT count(*) n FROM audit_log WHERE action='trip.purge'").fetchone()['n'],1)
+
+    def test_purge_cascades_trip_children_and_keeps_independent_records_and_media(self):
+        self.login();trip=self.new_trip(source={'task_id':self.task()})['trip'];tid=trip['id']
+        image=io.BytesIO();Image.new('RGB',(80,60),'green').save(image,'PNG');image.seek(0)
+        uploaded=self.client.post('/api/upload',data={'image':(image,'memory.png')},headers={'X-CSRF-Token':self.csrf},content_type='multipart/form-data')
+        self.assertEqual(uploaded.status_code,201);url=uploaded.json['url'];filename=url.split('/')[-1]
+        record=self.mutate('POST','/api/records',{'title':'已发布的回忆','destination':'南京','start_date':'2026-11-06','status':'public','body':'<p>独立足迹</p>'})
+        self.assertEqual(record.status_code,201);rid=record.json['id']
+        with connect() as c:
+            c.execute('INSERT INTO trip_notes(trip_id,captured_date,note,photos) VALUES(%s,%s,%s,%s)',(tid,'2026-11-06','实际随记',Jsonb([{'url':url,'caption':'照片'}])))
+            c.execute('INSERT INTO trip_records(trip_id,record_id) VALUES(%s,%s)',(tid,rid))
+        self.assertEqual(self.trash(trip).status_code,200)
+        recycled=self.client.get('/api/admin/trips?state=trash').json['trips'][0]
+        result=self.mutate('DELETE',f'/api/admin/trips/{tid}/purge',{'revision':recycled['revision'],'confirm_title':recycled['title']})
+        self.assertEqual(result.status_code,200,result.json)
+        with connect() as c:
+            for table in ('trips','trip_plans','trip_notes','trip_records'):
+                self.assertEqual(c.execute('SELECT count(*) n FROM '+table).fetchone()['n'],0,table)
+            for table in ('travel_records','media','agent_tasks'):
+                self.assertEqual(c.execute('SELECT count(*) n FROM '+table).fetchone()['n'],1,table)
+        self.assertEqual(self.visitor.get('/api/records/'+str(rid)).status_code,200)
+        material=next(m for m in self.client.get('/api/admin/media').json['media'] if m['filename']==filename)
+        self.assertFalse(any(r['kind']=='trip' for r in material['references']))
+
 
 if __name__=='__main__':
     unittest.main()

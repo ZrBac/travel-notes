@@ -305,6 +305,19 @@ def register(app,db,payload,audit,render):
         audit('trip.restore',trip_id,{'title':row['title']});db().commit()
         return jsonify(ok=True,revision=revision)
 
+    @app.delete('/api/admin/trips/<int:trip_id>/purge')
+    def trip_purge(trip_id):
+        data=payload()
+        db().execute('SELECT pg_advisory_xact_lock(74390511)')
+        row=locked(trip_id,data,True)
+        if not row['deleted_at']:abort(409,description='请先将这趟旅行移入回收站')
+        if data.get('confirm_title')!=row['title']:abort(400,description='请确认要彻底删除的旅行名称')
+        active=db().execute("SELECT id FROM agent_tasks WHERE request->>'attached_trip_id'=%s AND status IN ('queued','running','testing','publishing') LIMIT 1",(str(trip_id),)).fetchone()
+        if active:abort(409,description='这趟旅行还有助手任务在处理中，请先停止或等待任务完成')
+        db().execute('DELETE FROM trips WHERE id=%s',(trip_id,))
+        audit('trip.purge',trip_id,{'title':row['title']});db().commit()
+        return jsonify(ok=True)
+
     @app.post('/api/admin/trips/<int:trip_id>/plan')
     def trip_plan(trip_id):
         data=payload();workflow=None
