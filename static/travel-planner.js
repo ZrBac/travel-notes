@@ -10,7 +10,7 @@ const TravelPlanner = (() => {
   let family={preferences:{},updated_at:null},familyDirty=false,tripDirty=false,attached=null,attachedContext=null;
   const paceNames={relaxed:'宽松',balanced:'适中',active:'紧凑'};
   const here=()=>state.user&&state.route.split(/[/?]/)[0]==='travel-agent';
-  function stop(){TaskManager.cancel();checked.clear();clearTimeout(timer);timer=null;epoch++;refreshing=null;$('#main')?.removeEventListener('click',handle);}
+  function stop(){JourneyView.dispose($('#main'));TaskManager.cancel();checked.clear();clearTimeout(timer);timer=null;epoch++;refreshing=null;$('#main')?.removeEventListener('click',handle);}
   function input(name,label,placeholder='',extra=''){
     return `<label>${label}<input name="${name}" placeholder="${placeholder}" ${extra}></label>`;
   }
@@ -120,7 +120,7 @@ const TravelPlanner = (() => {
     return `<button type="button" class="button primary" data-planner="publication-preview" data-mode="${mode}">${count>1?'拆分为 '+count+' 篇攻略发布':'预览并发布攻略'}</button>`;
   }
   function renderDetail(){
-    const t=detail,g=t.guide,complete=t.status==='done'&&g;$('#planner-detail').hidden=false;
+    JourneyView.dispose($('#planner-detail'));const t=detail,g=t.guide,complete=t.status==='done'&&g;$('#planner-detail').hidden=false;
     if(t.workflow?.startsWith('record_')){$('#planner-detail').innerHTML=`<h2>旅行足迹整理 #${t.id}</h2><p>${esc(t.workflow_result?.summary||t.result||'正在整理。')}</p><a class="button primary" href="#${t.record_id?'record-edit/'+t.record_id:'record-new'}?ai=${t.id}">打开足迹编辑器查看 →</a>`;return;}
     if(t.workflow){$('#planner-detail').innerHTML=`<h2>本次旅行的助手任务 #${t.id}</h2><p>${esc(t.workflow_result?.summary||t.result||'任务正在处理。')}</p><a class="button primary" href="#trip/${t.attached_trip_id}/${({adjust_day:'today',check_departure:'prepare',recap:'recap',preferences:'recap'})[t.workflow]}">回到本次旅行查看与采用 →</a>`;return;}
     const controls=['queued','running'].includes(t.status)?`<button type="button" class="button small" data-planner="cancel" data-id="${t.id}">停止生成</button>`:active(t.status)?'':`<button type="button" class="button small" data-planner="followup">继续修改</button>`;
@@ -132,6 +132,7 @@ const TravelPlanner = (() => {
       <div class="planner-result-actions actions"><button type="button" class="button primary" data-planner="trip-adopt">采用为本次旅行</button>${publicationActions(t)}<details class="admin-more"><summary class="button">更多操作<span aria-hidden="true">⌄</span></summary><div class="admin-more-menu">${t.guide_id?`<a href="#edit/${t.guide_id}">编辑已存档攻略</a>`:`<button type="button" data-planner="save">存为攻略草稿</button>`}<button type="button" data-planner="enrich">补全图文与路线</button><button type="button" data-planner="copy">复制正文</button><a href="/api/admin/travel-agent/tasks/${t.id}/export" download>下载图文 HTML</a></div></details></div>
       ${t.photo_count?`<p class="help">已保存 ${t.photo_count} 张参考照片；下载 HTML 后也可离线查看图片。</p>`:`<p class="help">这份方案暂未配入照片，可点击“智能整理图文与路线”重新整理。</p>`}${t.photo_missing?.length?`<p class="help">待补配图：${t.photo_missing.map(esc).join('、')}。缺少准确素材时保留文字，不用相似景点或不同菜品替代。</p>`:''}<div id="planner-publication"></div><article class="prose planner-prose">${AdminImages.prepareHTML(t.html)}</article>${g.sources?`<details class="planner-sources"><summary>参考资料汇总</summary><pre>${esc(g.sources)}</pre></details>`:''}`:
       `<p class="agent-answer">${esc(t.result||'任务已加入队列，轮到后会开始研究。')}</p>${t.progress.length?`<details open><summary>正在参考的资料</summary><ul class="planner-progress">${t.progress.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`:''}`}`;
+    JourneyView.mount($('#planner-detail'),g);
   }
   async function refresh(token=epoch){
     if(token!==epoch||!here()||busy||document.hidden)return;if(refreshing)return refreshing;

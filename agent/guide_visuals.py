@@ -1,5 +1,6 @@
 """Deterministic guide cards; model text is escaped, only cached local pictures render."""
 from html import escape
+import json
 import re
 from urllib.parse import urlsplit
 
@@ -44,8 +45,13 @@ def compose(guide, photos):
             title='D'+str(day['day'])+' · '+day['destination']+'｜'+day['theme']
             route='<span class="trip-arrow">→</span>'.join('<span class="trip-stop">'+str(i+1)+' · '+text(stop)+'</span>' for i,stop in enumerate(day['stops']))
             rows.append('<tr><th>'+text('D'+str(day['day'])+' · '+day['destination'])+'</th><td><strong>'+text(day['theme'])+'</strong><br>'+text(' → '.join(day['stops']))+'</td><td>'+text(day['stay'])+'</td><td>'+text(day['pace'])+'</td></tr>')
-            slots=''.join('<tr><th>'+text(slot['period'])+'</th><td>'+text(slot['plan'])+'</td><td>'+text(slot['transport'])+'</td><td>'+text(slot['reservation'])+'</td></tr>' for slot in day['slots'])
-            daily.append('<div class="trip-day"><h3>'+text(title)+'</h3><div class="trip-route">'+route+'</div><p><strong>怎么走：</strong>'+text(day['transport'])+'</p><div class="trip-table-wrap"><table><thead><tr><th>时段</th><th>地点与体验</th><th>交通与预计耗时</th><th>预约与提醒</th></tr></thead><tbody>'+slots+'</tbody></table></div><div class="trip-meals"><p><strong>午餐：</strong>'+text(day['lunch'])+'</p><p><strong>晚餐：</strong>'+text(day['dinner'])+'</p></div><p><strong>住宿 / 返程：</strong>'+text(day['stay'])+'<br><strong>当天强度：</strong>'+text(day['pace'])+'</p></div>')
+            metadata={'destination':day['destination'],'country':guide.get('country',''),'stops':day['stops'],'waypoints':day.get('waypoints',[]),
+                      'slots':[{k:slot[k] for k in ('start_time','end_time','booking_lead_days') if k in slot} for slot in day['slots']]}
+            slots=[]
+            for slot in day['slots']:
+                clock='–'.join(value for value in (slot.get('start_time',''),slot.get('end_time','')) if value)
+                slots.append('<div class="trip-timeline-item"><div class="trip-time-title"><span class="trip-time-period">'+text(slot['period'])+'</span><span class="trip-time-clock">'+text('建议 '+clock if clock else '灵活安排')+'</span></div><div class="trip-time-body"><p class="trip-time-plan">'+text(slot['plan'])+'</p><p><strong>交通与耗时</strong><span class="trip-time-transport">'+text(slot['transport'])+'</span></p><p><strong>预约与提醒</strong><span class="trip-time-reservation">'+text(slot['reservation'])+'</span></p></div></div>')
+            daily.append('<div class="trip-day"><h3>'+text(title)+'</h3><div class="trip-route" data-journey="'+text(json.dumps(metadata,ensure_ascii=False,separators=(',',':')))+'">'+route+'</div><p><strong>怎么走：</strong>'+text(day['transport'])+'</p><div class="trip-timeline">'+''.join(slots)+'</div><div class="trip-meals"><p><strong>午餐：</strong>'+text(day['lunch'])+'</p><p><strong>晚餐：</strong>'+text(day['dinner'])+'</p></div><p><strong>住宿 / 返程：</strong>'+text(day['stay'])+'<br><strong>当天强度：</strong>'+text(day['pace'])+'</p></div>')
         overview='<h2>行程一览</h2><div class="trip-table-wrap"><table><thead><tr><th>天数 / 目的地</th><th>主题与游玩顺序</th><th>住宿 / 返程</th><th>节奏与体力</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
         note='<p>照片为资料参考，不代表出行当天景况；美食图片为菜品示意。交通耗时和费用请结合实际日期复查。</p>'
         return '\n\n'.join([summary,overview,groups[0] if groups else '', '<h2>每天怎么走</h2>'+''.join(daily),groups[1] if len(groups)>1 else '',guide['body'],note])

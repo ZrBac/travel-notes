@@ -1,8 +1,11 @@
 """Administrator-only concrete trips, immutable plan versions and everyday checklists."""
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
+import json
+import math
 import re
 import secrets
+from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from flask import abort, jsonify, request, session
 from psycopg.types.json import Jsonb
@@ -39,10 +42,58 @@ def iso_date(value):
 
 def summary(row, day=None):
     day=day or today()
-    phase='trash' if row.get('deleted_at') else 'archived' if row['state']=='archived' else 'upcoming' if row['start_date']>day else 'completed' if row['end_date']<day else 'travelling'
-    return {**row, 'phase':phase, 'days':(row['end_date']-row['start_date']).days+1,
+    phase='trash' if row.get('deleted_at') else 'upcoming' if row['start_date']>day else 'completed' if row['end_date']<day else 'travelling'
+    details={'checklist':checklist_dates(row['checklist'],row['start_date'])} if 'checklist' in row else {}
+    return {**row, **details, 'phase':phase, 'days':(row['end_date']-row['start_date']).days+1,
             'today_day':(day-row['start_date']).days+1 if phase=='travelling' else None,
             'countdown':max(0,(row['start_date']-day).days)}
+
+
+def slot_details(slot):
+    details={}
+    for key in ('start_time','end_time'):
+        if key not in slot:continue
+        value=slot[key]
+        if not isinstance(value,str) or (value and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',value)):
+            abort(400,description='行程时间请填写 HH:MM，未确定可留空')
+        details[key]=value
+    if details.get('start_time') and details.get('end_time') and details['end_time']<=details['start_time']:
+        abort(400,description='行程结束时间需要晚于开始时间')
+    if 'booking_lead_days' in slot:
+        value=slot['booking_lead_days']
+        if value is not None:integer(value,180,'建议提前预约天数',0)
+        details['booking_lead_days']=value
+    return details
+
+
+def route_points(points,stops):
+    if not isinstance(points,list) or len(points)>20:abort(400,description='地图地点数量或格式不正确')
+    clean=[];seen=set()
+    for point in points:
+        if not isinstance(point,dict) or set(point)!={'name','lat','lng','source'}:abort(400,description='地图地点需包含名称、坐标和来源')
+        name=text(point['name'],120,'地图地点',True)
+        if name not in stops or name in seen:abort(400,description='地图地点必须对应当天路线，且不能重复')
+        for key,limit in (('lat',90),('lng',180)):
+            value=point[key]
+            if type(value) not in (int,float) or not math.isfinite(value) or not -limit<=value<=limit:abort(400,description='地图坐标格式不正确')
+        source=text(point['source'],500,'坐标来源',True)
+        try:
+            url=urlsplit(source)
+            if url.scheme!='https' or not url.hostname or url.username or url.password or url.port not in (None,443):raise ValueError()
+        except ValueError:abort(400,description='坐标来源需为有效的 HTTPS 链接')
+        clean.append({'name':name,'lat':point['lat'],'lng':point['lng'],'source':source});seen.add(name)
+    return clean
+
+
+def checklist_dates(items,start):
+    result=[]
+    for item in items:
+        value=dict(item)
+        if type(item.get('lead_days')) is int and type(item.get('day')) is int:
+            try:value['suggested_date']=(start+timedelta(days=item['day']-1-item['lead_days'])).isoformat()
+            except OverflowError:pass
+        result.append(value)
+    return result
 
 
 def overview(db):
@@ -51,7 +102,7 @@ def overview(db):
         coalesce(p.version,0) AS plan_version, jsonb_array_length(t.checklist) AS checklist_total,
         (SELECT count(*) FROM jsonb_array_elements(t.checklist) c WHERE c->>'done'='true') AS checklist_done
         FROM trips t LEFT JOIN LATERAL (SELECT version FROM trip_plans WHERE trip_id=t.id ORDER BY version DESC LIMIT 1) p ON true
-        WHERE t.deleted_at IS NULL AND t.state='active' AND t.end_date>=%s
+        WHERE t.deleted_at IS NULL AND t.end_date>=%s
         ORDER BY CASE WHEN t.start_date<=%s THEN 0 ELSE 1 END,t.start_date,t.id DESC LIMIT 1""",(day,day)).fetchone()
     return summary(row,day) if row else None
 
@@ -69,12 +120,13 @@ def normalize_itinerary(value, days, destination):
         stops=item.get('stops',[])
         if not isinstance(stops,list) or len(stops)>20: abort(400, description='每天最多填写 20 个路线地点')
         row['stops']=[text(stop,120,'路线地点',True) for stop in stops]
+        if 'waypoints' in item:row['waypoints']=route_points(item['waypoints'],row['stops'])
         slots=item.get('slots',[])
         if not isinstance(slots,list) or len(slots)!=3: abort(400, description='每天需要上午、下午和晚上的安排')
         row['slots']=[]
         for period,slot in zip(PERIODS,slots):
             if not isinstance(slot,dict) or slot.get('period')!=period: abort(400,description='请按上午、下午、晚上填写安排')
-            row['slots'].append({'period':period, **{key:text(slot.get(key,''),1000,'时段安排') for key in ('plan','transport','reservation')}})
+            row['slots'].append({'period':period, **{key:text(slot.get(key,''),1000,'时段安排') for key in ('plan','transport','reservation')},**slot_details(slot)})
         clean.append(row)
     return clean
 
@@ -99,6 +151,21 @@ def guide_itinerary(guide,render):
                 cells=[td.get_text(' ',strip=True) for td in tr.find_all(['th','td'])]
                 if len(cells)>=4 and cells[0] in PERIODS:
                     row['slots'][PERIODS.index(cells[0])]={'period':cells[0],'plan':cells[1][:1000],'transport':cells[2][:1000],'reservation':cells[3][:1000]}
+        for slot,node in zip(row['slots'],block.select('.trip-timeline-item')):
+            if all(node.select_one('.'+name) for name in ('trip-time-period','trip-time-plan','trip-time-transport','trip-time-reservation')):
+                slot['plan']=node.select_one('.trip-time-plan').get_text(' ',strip=True)[:1000]
+                slot['transport']=node.select_one('.trip-time-transport').get_text(' ',strip=True)[:1000]
+                slot['reservation']=node.select_one('.trip-time-reservation').get_text(' ',strip=True)[:1000]
+        meta=block.select_one('[data-journey]')
+        if meta:
+            try:
+                details=json.loads(meta['data-journey'])
+                if not isinstance(details,dict):raise ValueError()
+                row['waypoints']=details.get('waypoints',[])
+                for slot,extra in zip(row['slots'],details.get('slots',[])):
+                    if not isinstance(extra,dict):raise ValueError()
+                    slot.update({key:extra[key] for key in ('start_time','end_time','booking_lead_days') if key in extra})
+            except (ValueError,TypeError,KeyError):abort(400,description='攻略中的行程数据不完整，请重新整理')
         for p in block.find_all('p'):
             value=p.get_text(' ',strip=True)
             for prefix,key in [('怎么走：','transport'),('午餐：','lunch'),('晚餐：','dinner')]:
@@ -125,11 +192,14 @@ def merge_reservations(items,itinerary,version):
             title=('D'+str(day['day'])+' '+slot['period']+'：'+value)[:200]
             if (day['day'],title) in keys:
                 for item in items:
-                    if item['day']==day['day'] and item['title']==title:item['plan_version']=version
+                    if item['day']==day['day'] and item['title']==title:
+                        item['plan_version']=version
+                        if 'booking_lead_days' in slot:item['lead_days']=slot['booking_lead_days']
                 continue
             if len(items)>=150:break
             items.append({'id':secrets.token_hex(8),'kind':'reservation','title':title,'note':'根据方案整理，预约完成后再勾选',
-                          'done':False,'day':day['day'],'plan_version':version})
+                          'done':False,'day':day['day'],'plan_version':version,
+                          **({'lead_days':slot['booking_lead_days']} if 'booking_lead_days' in slot else {})})
             keys.add((day['day'],title))
     return items
 
@@ -224,18 +294,21 @@ def register(app,db,payload,audit,render):
 
     @app.get('/api/admin/trips')
     def trips():
-        day=today();page=request.args.get('page','1');q=request.args.get('q','').strip();state=request.args.get('state','')
-        if not page.isascii() or not page.isdigit() or len(page)>6 or int(page)<1 or len(q)>120 or state not in ('','active','archived','trash'):
+        day=today();page=request.args.get('page','1');q=request.args.get('q','').strip();state=request.args.get('state','');phase=request.args.get('phase','')
+        if not page.isascii() or not page.isdigit() or len(page)>6 or int(page)<1 or len(q)>120 or state not in ('','active','archived','trash') or phase not in ('','upcoming','travelling','completed'):
             abort(400,description='旅行筛选条件不正确')
         where=['deleted_at IS NOT NULL' if state=='trash' else 'deleted_at IS NULL'];params=[]
         if q:where.append('(title ILIKE %s OR destination ILIKE %s)');params.extend(['%'+q+'%']*2)
         if state and state!='trash':where.append('state=%s');params.append(state)
+        if phase=='upcoming':where.append('start_date>%s');params.append(day)
+        elif phase=='travelling':where.append('start_date<=%s AND end_date>=%s');params.extend([day,day])
+        elif phase=='completed':where.append('end_date<%s');params.append(day)
         condition=' WHERE '+' AND '.join(where) if where else ''
         total=db().execute('SELECT count(*) n FROM trips'+condition,params).fetchone()['n']
         pages=max(1,(total+11)//12);page=min(int(page),pages)
         rows=db().execute('SELECT id,title,destination,start_date,end_date,people,state,revision,updated_at,deleted_at,'
             '(SELECT max(version) FROM trip_plans WHERE trip_id=trips.id) AS plan_version FROM trips'+condition+
-            " ORDER BY deleted_at DESC,CASE WHEN state='archived' THEN 3 WHEN start_date<=%s AND end_date>=%s THEN 0 WHEN start_date>%s THEN 1 ELSE 2 END,start_date,id DESC LIMIT 12 OFFSET %s",
+            " ORDER BY deleted_at DESC,CASE WHEN start_date<=%s AND end_date>=%s THEN 0 WHEN start_date>%s THEN 1 ELSE 2 END,start_date,id DESC LIMIT 12 OFFSET %s",
             (*params,day,day,day,(page-1)*12)).fetchall()
         return jsonify(trips=[summary(row,day) for row in rows],total=total,page=page,pages=pages,focus=None if state=='trash' else overview(db))
 
@@ -391,8 +464,11 @@ def register(app,db,payload,audit,render):
                 for key,limit in [('title',200),('note',500)]:
                     if key in data:item[key]=text(data[key],limit,'事项内容',key=='title')
         else:abort(400,description='准备事项操作不正确')
+        if action!='remove' and 'due_date' in data:
+            value=data['due_date']
+            item['due_date']=None if value is None or value=='' else iso_date(value).isoformat()
         revision=save_trip(row,checklist=items);audit('trip.checklist',trip_id,{'action':action});db().commit()
-        return jsonify(checklist=items,revision=revision)
+        return jsonify(checklist=checklist_dates(items,row['start_date']),revision=revision)
 
     @app.post('/api/admin/trips/<int:trip_id>/progress')
     def trip_progress(trip_id):

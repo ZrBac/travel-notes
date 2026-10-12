@@ -1,8 +1,10 @@
 """Travel-only model instructions and strict parsing; no production write tools."""
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 from guide_visuals import TEMPLATES
 
@@ -24,8 +26,40 @@ DAY_SCHEMA = {'type':'object','properties':{**{k:{'type':'string'} for k in DAY_
     'stops':{'type':'array','items':{'type':'string'}},
     'slots':{'type':'array','items':{'type':'object','properties':{**{k:{'type':'string'} for k in SLOT_FIELDS},'period':{'type':'string','enum':['上午','下午','晚上']}},'required':list(SLOT_FIELDS),'additionalProperties':False}}},
     'required':[*DAY_FIELDS,'day','stops','slots'],'additionalProperties':False}
+LEGACY_DAY_FIELDS=set(DAY_SCHEMA['required'])
+SLOT_DETAILS={'start_time':{'type':'string'},'end_time':{'type':'string'},'booking_lead_days':{'type':['integer','null'],'minimum':0,'maximum':180}}
+DAY_SCHEMA['properties']['slots']['items']['properties'].update(SLOT_DETAILS)
+DAY_SCHEMA['properties']['slots']['items']['required']+=list(SLOT_DETAILS)
+DAY_SCHEMA['properties']['waypoints']={'type':'array','maxItems':20,'items':{'type':'object','properties':{'name':{'type':'string'},'lat':{'type':'number'},'lng':{'type':'number'},'source':{'type':'string'}},'required':['name','lat','lng','source'],'additionalProperties':False}}
+DAY_SCHEMA['required'].append('waypoints')
 OUTPUT_SCHEMA['properties'].update(planning_summary={'type':'string'},itinerary={'type':'array','items':DAY_SCHEMA})
 OUTPUT_SCHEMA['required'] += ['planning_summary','itinerary']
+
+
+def validate_day_details(day):
+    points=day.get('waypoints',[]);seen=set()
+    if not isinstance(points,list) or len(points)>20:raise ValueError('地图地点数量不正确')
+    for point in points:
+        if not isinstance(point,dict) or set(point)!={'name','lat','lng','source'}:raise ValueError('地图地点缺少坐标来源')
+        name=point['name']
+        if not isinstance(name,str) or name not in day['stops'] or name in seen:raise ValueError('地图地点与每日路线不一致')
+        for key,limit in (('lat',90),('lng',180)):
+            value=point[key]
+            if type(value) not in (int,float) or not math.isfinite(value) or not -limit<=value<=limit:raise ValueError('地图坐标无效')
+        source=point['source']
+        try:
+            if not isinstance(source,str) or len(source)>500:raise ValueError()
+            parsed=urlsplit(source)
+            if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None,443):raise ValueError()
+        except ValueError:raise ValueError('地图坐标需附有效 HTTPS 来源')
+        seen.add(name)
+    for slot in day['slots']:
+        for key in ('start_time','end_time'):
+            value=slot.get(key,'')
+            if not isinstance(value,str) or (value and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',value)):raise ValueError('行程时间格式不正确')
+        if slot.get('start_time') and slot.get('end_time') and slot['end_time']<=slot['start_time']:raise ValueError('行程时间顺序不正确')
+        lead=slot.get('booking_lead_days')
+        if lead is not None and (type(lead) is not int or not 0<=lead<=180):raise ValueError('预约提前天数不正确')
 
 
 
@@ -48,6 +82,8 @@ planning_summary 用约80～180字说明为什么这样搭配、路线为什么�
 itinerary 是系统生成清晰总览表、逐日线路和执行表的唯一数据来源。每个目的地必须按 day=1～days 提供全部天数，不缺天、不重号；对比模式按目的地分组，每个候选先完整列出 days 天，再列下一个候选，最多4个候选。destination 表示整条行程/候选方案的名称，各天保持一致；跨城市连游也使用同一方案名（如“京都—大阪”），当天所在城市写在 theme 和 stops，不把转场拆成独立候选。
 每天提供 theme 当日主题；stops 按实际游玩顺序列出2～8个真实地点或清晰的住宿/车站节点（首尾日可含到达/返程），避免远距离来回折返；transport 写明各段主要交通和预计耗时；pace 写明步行/体力强度及合理依据（不确定时注明估计），stay 写住宿区域或当天返程；lunch/dinner 写具体菜品和顺路街区，不编造餐厅。
 每天 slots 恰好三行，依次上午、下午、晚上；每行 plan 写地点与体验、transport 写到该区域的交通和估计耗时、reservation 写预约事项或“未发现需预约项目，出发前复查”。首末日未知到离时间时留出转场余量并明确假设，不能编造航班。slots 的地点和顺序必须与 stops 一致。
+slots 的 start_time/end_time 用 HH:MM 给出合理的建议时间；未知抵达时间、灵活安排或无法确定时留空，不编造固定场次。booking_lead_days 是建议在游玩前几天处理预约，填 0～180 的整数；无需预约或规则未核实则填 null。它是准备建议，不等于官方放票时间，reservation 需解释实际预约规则与核实入口。
+每天 waypoints 只填写实际查到 WGS-84 坐标的路线地点，name 与 stops 完全一致，lat/lng 为数字，source 附实际包含坐标的 HTTPS 来源，例如具体 Wikidata 实体或景点官方位置资料。不能从地名猜坐标，不能直接把高德/腾讯的 GCJ-02 坐标当 WGS-84；未查到时 waypoints 可为空，部分定位可以只列有来源的地点。不要为了让地图好看伪造来源或用城市中心代替景点。
 必须给出 highlights 景点体验卡片 单目的地3～8张和 foods 美食卡片单目的地4～10张。比较模式每个候选目的地至少2张景点卡、3张美食卡，整份最多12张景点卡和16张美食卡，最多四个候选；卡片 name 标明所属城市。景点写清看点、能玩什么、停留多久、预约/交通提示；每道美食写清特色口味、在哪个街区找、每份或人均估价、点餐/忌口提示。没有核实的具体餐厅不要编造，推荐菜品和街区即可，价格注明参考估算。
 每张卡 photo_query 提供用于 Wikimedia Commons 查找该景点/菜品真实照片的常用英文名称，尽量2～5个词。食品查询先写准确菜品名；地区决定菜品身份时保留地区限定，不要为搜到图而改成不同菜品。不要堆叠无关修饰词，例如菠萝紫米饭可用 pineapple sticky rice，但配图只能作为菜品示意。不要用泛泛的 city/food/travel，不要把不同地点或食物混成同一查询；不确定菜品英文名可留空。系统会检索可复用照片、缓存压缩并注明作者和许可，你不输出图片网址、不下载文件、不使用虚构图片。景点/食品描写必须与照片查询对象对应。
 body 只补充住宿、预算、预约清单、季节天气/雨天备选、待确认事项和资料来源；对比模式可在开头补一张候选地比较表。不要在 body 重复逐日行程、路线总览、规划思路或景点美食介绍，这些由 itinerary/planning_summary/cards 自动排版。住宿用“区域｜适合原因｜房间数×晚数｜参考单价｜合计”表格；预算用“项目｜人均｜团队合计｜包含范围与估算依据”表格。固定交通、住宿、餐饮、门票活动、预备金分类，不把人均和总价混写。短段落、清楚的小标题与表格优先，避免大段文字。引用用正常 Markdown 标题与完整 HTTPS/HTTP URL，不能包含仅工具内可用的 turn... 引用标记。
@@ -91,7 +127,7 @@ def parse_answer(text):
         if not isinstance(itinerary,list) or not guide['days']<=len(itinerary)<=guide['days']*4:raise ValueError('每日路线数量不正确')
         destinations={}
         for day in itinerary:
-            if not isinstance(day,dict) or set(day)!=set(DAY_SCHEMA['required']):raise ValueError('每日路线字段不完整')
+            if not isinstance(day,dict) or set(day) not in (set(DAY_SCHEMA['required']),LEGACY_DAY_FIELDS):raise ValueError('每日路线字段不完整')
             for key,limit in DAY_FIELDS.items():
                 if not isinstance(day[key],str) or not 1<=len(day[key].strip())<=limit:raise ValueError('每日路线内容无效：'+key)
                 day[key]=day[key].strip()
@@ -100,12 +136,14 @@ def parse_answer(text):
             destinations.setdefault(day['destination'],[]).append(day['day'])
             stops=day['stops']
             if not isinstance(stops,list) or not 2<=len(stops)<=8 or any(not isinstance(x,str) or not 1<=len(x.strip())<=100 for x in stops):raise ValueError('请补充清晰的每日路线节点')
+            day['stops']=[value.strip() for value in stops]
             slots=day['slots']
             if not isinstance(slots,list) or len(slots)!=3:raise ValueError('每天需要上午、下午和晚上的安排')
             for period,slot in zip(('上午','下午','晚上'),slots):
-                if not isinstance(slot,dict) or set(slot)!=set(SLOT_FIELDS) or slot['period']!=period:raise ValueError('每日时段顺序无效')
+                if not isinstance(slot,dict) or set(slot) not in (set(SLOT_FIELDS),set(SLOT_FIELDS)|set(SLOT_DETAILS)) or slot['period']!=period:raise ValueError('每日时段顺序无效')
                 for key,limit in SLOT_FIELDS.items():
                     if not isinstance(slot[key],str) or not 1<=len(slot[key].strip())<=limit:raise ValueError('每日安排内容无效：'+key)
+            validate_day_details(day)
         if not 1<=len(destinations)<=4 or any(days!=list(range(1,guide['days']+1)) for days in destinations.values()):raise ValueError('每个目的地必须按顺序列全每日路线，不能缺天或重复')
         # Check explicit full dates only; short dates and venue opening rules still need research.
         for value in [guide['season'],*(d['theme'] for d in itinerary)]:

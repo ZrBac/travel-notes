@@ -284,7 +284,7 @@ def register(app, db, payload, audit, render_markdown, validate, sync_tags, data
             if total>16*500000:return 'src=""'
             return 'src="data:image/webp;base64,'+base64.b64encode(raw).decode()+'"'
         html=re.sub(r'src="/media/([a-f0-9]{32}\.webp)(?:\?w=(?:640|1280))?"',embed,html)
-        css=(Path(__file__).parent/'static/guide-visual.css').read_text()
+        css=(Path(__file__).parent/'static/guide-visual.css').read_text()+(Path(__file__).parent/'static/journey-view.css').read_text()
         document='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escape(guide['title'])+'</title><style>body{max-width:1050px;margin:32px auto;padding:0 20px;font-family:system-ui,sans-serif;line-height:1.85;color:#243b32;background:#faf9f5}table{display:block;overflow:auto;border-collapse:collapse}td,th{padding:10px;border:1px solid #ddd}a{color:#24674e}img{max-width:100%}h1,h2,h3{line-height:1.45}pre{white-space:pre-wrap;overflow-wrap:anywhere}'+css+'</style><h1>'+escape(guide['title'])+'</h1><p>'+escape(guide['summary'])+'</p><p>攻略参考 · 价格和预约规则请以出行时官方信息为准。</p>'+html+'<h2>参考资料</h2>'+render_markdown(guide.get('sources',''))+'</html>'
         response=send_file(io.BytesIO(document.encode()),mimetype='text/html',as_attachment=True,download_name=guide['title']+'.html')
         response.headers['Content-Security-Policy']="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"

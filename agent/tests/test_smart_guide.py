@@ -20,7 +20,7 @@ class SmartGuideTests(unittest.TestCase):
   g=self.parse(sample());g['itinerary'][0]['stops'][1]='<script>alert(1)</script>'
   html=compose(g,{})
   self.assertIn('trip-route',html);self.assertEqual(html.count('class="trip-day"'),2)
-  self.assertEqual(html.count('<thead>'),3);self.assertIn('2 · &lt;script&gt;',html);self.assertNotIn('<script>',html)
+  self.assertEqual(html.count('<thead>'),1);self.assertEqual(html.count('class="trip-timeline-item"'),6);self.assertIn('2 · &lt;script&gt;',html);self.assertNotIn('<script>',html)
   self.assertLess(html.index('行程一览'),html.index('值得停留'))
   self.assertLess(html.index('每天怎么走'),html.index('这一站，吃什么'))
  def test_missing_duplicate_or_out_of_order_days_rejected(self):

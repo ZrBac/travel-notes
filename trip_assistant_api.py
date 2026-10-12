@@ -68,7 +68,6 @@ def adjustment(db, task_id, trip):
     original = current_task(db, task, trip)
     if not original: abort(409, description='请先填写或采用本次旅行计划')
     context = task['request']['context']; day = context['day']; proposal = task['report']['workflow_result'].get('day_plan')
-    if trip['state']=='archived': abort(409,description='已归档旅行请先取消归档，再调整安排')
     if trip['start_date']+timedelta(days=day-1)<today(): abort(409,description='这一天已经过去，请保留实际记录，选择今天或未来日期重新调整')
     snapshot = copy.deepcopy(original['snapshot'])
     candidate = copy.deepcopy(snapshot['itinerary']); candidate[day-1] = proposal
@@ -107,7 +106,6 @@ def register(app, db, payload, audit, render, validate_record):
             previous=db().execute("SELECT id FROM agent_tasks WHERE request->>'assistant'='travel' AND request->>'request_key'=%s AND request->>'attached_trip_id'=%s AND request->>'created_by'=%s",(key,str(trip_id),str(session['admin_id']))).fetchone()
             if previous: return jsonify(id=previous['id'],already_saved=True)
         if type(data.get('revision')) is not int or row['revision']!=data['revision']: abort(409,description='旅行资料已更新，请刷新后再提交；补充要求仍保留')
-        if row['state']=='archived' and action in ('adjust_day','check_departure'): abort(409,description='已归档旅行请先取消归档，再修改安排')
         info=db().execute("SELECT value FROM settings WHERE key='agent_service'").fetchone()
         info=info['value'] if info else {}
         if datetime.now(timezone.utc).timestamp()-info.get('heartbeat',0)>=300 or not info.get('authenticated'): abort(503,description='旅游助手暂未连接或账号需要重新登录')

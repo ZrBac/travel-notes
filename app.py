@@ -107,7 +107,7 @@ def headers(response):
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='same-origin'
-    response.headers.setdefault('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+    response.headers.setdefault('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
     if request.path.startswith(('/api/','/admin')): response.headers['Cache-Control']='no-store'
     elif request.path.startswith('/media/'):
         response.headers['Cache-Control']='private, no-cache' if response.status_code in (200,304) else 'no-store'
@@ -305,7 +305,7 @@ def serialize(row,full=False):
 def render_markdown(body):
     html=bleach.clean(markdown.markdown(body,extensions=['extra','sane_lists']),
         tags={'p','br','h1','h2','h3','h4','strong','em','ul','ol','li','blockquote','a','img','hr','code','pre','table','thead','tbody','tr','td','th','div','figure','figcaption','span'},
-        attributes={'div':lambda tag,name,value: name=='class' and value in ('trip-overview','trip-grid','trip-card','trip-card-copy','trip-day','trip-route','trip-table-wrap','trip-meals'),'span':lambda tag,name,value:name=='class' and value in ('trip-arrow','trip-stop'),'figure':lambda tag,name,value:name=='class' and value=='trip-photo','a':['href','title'],'img':['src','alt','title'],'th':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100),'td':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100)},protocols={'http','https'},strip=True)
+        attributes={'div':lambda tag,name,value: (name=='class' and value in ('trip-overview','trip-grid','trip-card','trip-card-copy','trip-day','trip-route','trip-table-wrap','trip-meals','trip-timeline','trip-timeline-item','trip-time-title','trip-time-body')) or (name=='data-journey' and len(value)<=16000),'span':lambda tag,name,value:name=='class' and value in ('trip-arrow','trip-stop','trip-time-period','trip-time-clock','trip-time-transport','trip-time-reservation'),'p':lambda tag,name,value:name=='class' and value=='trip-time-plan','figure':lambda tag,name,value:name=='class' and value=='trip-photo','a':['href','title'],'img':['src','alt','title'],'th':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100),'td':lambda tag,name,value: name=='align' or (name in ('colspan','rowspan') and len(value)<=3 and value.isascii() and value.isdigit() and 1<=int(value)<=100)},protocols={'http','https'},strip=True)
     return re.sub(r'<img\b[^>]*>',lazy_image,html)
 
 @app.post('/api/admin/preview')

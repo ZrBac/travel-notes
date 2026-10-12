@@ -218,10 +218,14 @@ class TripTests(unittest.TestCase):
             page=self.client.get('/api/admin/trips').json;self.assertEqual(page['focus']['id'],active['trip']['id']);self.assertEqual(page['focus']['today_day'],2)
             self.assertEqual(self.client.get('/api/admin/overview').json['trip']['phase'],'travelling')
             r=self.mutate('PUT',f"/api/admin/trips/{active['trip']['id']}",{'revision':1,'state':'archived'});self.assertEqual(r.status_code,200)
-            self.assertEqual(self.client.get('/api/admin/trips').json['focus']['id'],next_trip['trip']['id'])
+            self.assertEqual(self.client.get('/api/admin/trips').json['focus']['id'],active['trip']['id'])
+            self.assertEqual(self.get(active['trip']['id'])['trip']['phase'],'travelling')
+            for phase in ('upcoming','travelling','completed'):
+                result=self.client.get('/api/admin/trips?phase='+phase).json
+                self.assertEqual(result['total'],1);self.assertEqual(result['trips'][0]['phase'],phase)
             self.assertEqual(self.client.get('/api/admin/trips?state=archived').json['total'],1)
             self.assertEqual(self.get(past['trip']['id'])['trip']['phase'],'completed')
-        for query in ('page=0','page=bad','page=999999999','state=public','q='+('x'*121)):
+        for query in ('page=0','page=bad','page=999999999','state=public','phase=archived','q='+('x'*121)):
             self.assertEqual(self.client.get('/api/admin/trips?'+query).status_code,400)
 
     def test_export_keeps_private_journeys_and_version_history(self):
