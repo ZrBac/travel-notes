@@ -9,7 +9,8 @@ const days=()=>[1,2].map(day=>({day,destination:'南京',theme:'老城慢游 '+d
  let trip=null,plans=[],failCreate=true,failMeta=true,failPlan=true;
  const snapshot={title:'南京家庭慢游',destination:'南京',country:'中国',summary:'两天轻松安排',days:2,budget:'参考估算',conditions:{people:3,companions:'三位成人'},itinerary:days()};
  const task={id:1,status:'done',prompt:'比较南京和泉州',trip:{mode:'compare',destination:'南京、泉州',days:2,people:3},destinations:['南京','泉州'],guide:{...snapshot,body:'参考资料'},html:'<p>参考攻略</p>',progress:[],created_at:'2026-10-10',updated_at:'2026-10-10',publications:{}};
- const summary=()=>trip?{...clone(trip),phase:trip.state==='archived'?'archived':trip.phase,plan_version:plans.length}:null;
+ let failTrash=true;
+ const summary=()=>trip?{...clone(trip),phase:trip.deleted_at?'trash':trip.state==='archived'?'archived':trip.phase,plan_version:plans.length}:null;
  function bump(){trip.revision++;return trip.revision;}
  function append(plan){const prior=plans.at(-1),version=plans.length+1;plans.push({id:version,version,label:'采用或调整',trip_id:1,snapshot:clone(plan),created_at:'2026-10-10'});if(prior)for(const day of plan.itinerary)for(const [index,stop]of day.stops.entries()){const old=prior.snapshot.itinerary[day.day-1].stops.indexOf(stop),status=trip.progress[prior.version+':'+day.day+':'+old];if(status)trip.progress[version+':'+day.day+':'+index]=status;}}
  await ctx.route('**/*',async route=>{
@@ -21,13 +22,21 @@ const days=()=>[1,2].map(day=>({day,destination:'南京',theme:'老城慢游 '+d
    if(u.pathname==='/api/admin/travel-agent/tasks/1')return route.fulfill({json:{task:clone(task)}});
    if(u.pathname==='/api/admin/travel-agent/preferences')return route.fulfill({json:{preferences:{people:3,origin:'上海'},updated_at:'2026-10-10'}});
    if(u.pathname==='/api/admin/trips/source'){assert.equal(u.searchParams.get('destination'),'南京');return route.fulfill({json:{plan:clone(snapshot),destinations:['南京','泉州'],source:{task_id:1,guide_id:null,destination:'南京',updated_at:'fixture'}}});}
-   if(u.pathname==='/api/admin/trips'&&method==='GET')return route.fulfill({json:{trips:trip&&(!u.searchParams.get('state')||trip.state===u.searchParams.get('state'))?[summary()]:[],focus:trip?.state==='active'?summary():null,total:trip?1:0,page:1,pages:1}});
+   if(u.pathname==='/api/admin/trips'&&method==='GET'){const state=u.searchParams.get('state'),trash=state==='trash',visible=trip&&(trash?!!trip.deleted_at:!trip.deleted_at&&(!state||trip.state===state));return route.fulfill({json:{trips:visible?[summary()]:[],focus:!trash&&trip?.state==='active'&&!trip.deleted_at?summary():null,total:visible?1:0,page:1,pages:1}});}
    if(u.pathname==='/api/admin/trips'&&method==='POST'){
     if(failCreate){failCreate=false;return route.fulfill({status:409,json:{error:'模拟采用失败，请重试'}});}
     assert.equal(data.source.destination,'南京');assert.equal(data.end_date,'2026-11-07');assert.equal(data.people,3);assert.match(data.request_key,/^[a-f0-9]{32}$/);
     trip={id:1,title:data.title||'南京家庭旅行',destination:'南京',start_date:data.start_date,end_date:data.end_date,people:data.people,companions:data.companions,lodging:'',transport:'',notes:'',state:'active',revision:1,phase:'travelling',today_day:2,countdown:0,days:2,progress:{},checklist:[{id:'c1',kind:'prepare',title:'确认车票',note:'',done:false,day:null,plan_version:null},{id:'c2',kind:'reservation',title:'博物馆预约',note:'预约完成后勾选',done:false,day:1,plan_version:1},{id:'c3',kind:'packing',title:'带充电器',note:'',done:false,day:null,plan_version:null}]};append(snapshot);return route.fulfill({status:201,json:{id:1}});
    }
-   if(u.pathname==='/api/admin/trips/1'&&method==='GET')return route.fulfill({json:{trip:clone(trip),plan:clone(plans.at(-1)),versions:clone(plans).reverse().map(({version,label,created_at})=>({version,label,created_at}))}});
+   if(u.pathname==='/api/admin/trips/1'&&method==='GET'){if(trip.deleted_at)return route.fulfill({status:404,json:{error:'旅行已删除'}});return route.fulfill({json:{trip:clone(trip),plan:clone(plans.at(-1)),versions:clone(plans).reverse().map(({version,label,created_at})=>({version,label,created_at}))}});}
+   if(u.pathname==='/api/admin/trips/1'&&method==='DELETE'){
+    assert.equal(data.revision,trip.revision);
+    if(failTrash){failTrash=false;return route.fulfill({status:409,json:{error:'模拟删除冲突'}});}
+    trip.deleted_at='2026-10-12T12:00:00Z';bump();return route.fulfill({json:{ok:true,revision:trip.revision}});
+   }
+   if(u.pathname==='/api/admin/trips/1/restore'&&method==='POST'){
+    assert.equal(data.revision,trip.revision);trip.deleted_at=null;bump();return route.fulfill({json:{ok:true,revision:trip.revision}});
+   }
    if(u.pathname==='/api/admin/trips/1'&&method==='PUT'){
     assert.equal(data.revision,trip.revision);await new Promise(r=>setTimeout(r,180));
     if(failMeta){failMeta=false;return route.fulfill({status:409,json:{error:'模拟资料保存冲突'}});}
@@ -82,6 +91,21 @@ const days=()=>[1,2].map(day=>({day,destination:'南京',theme:'老城慢游 '+d
  if(width===390){await p.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await p.waitForTimeout(250);await p.screenshot({path:'/tmp/trips-prepare-phone.png',fullPage:true});}assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'prepare overflow '+width);
  await go('dashboard');assert.ok((await p.locator('.trip-focus').innerText()).includes('今天是第 2 天'));await go('trips');await p.locator('#trip-filter [name=state]').selectOption('active');await p.locator('#trip-filter button[type=submit]').click();await p.waitForFunction(()=>state.route==='trips?q=&state=active'&&!document.querySelector('#main').inert);assert.equal(await p.locator('.trip-card').count(),1);
  await go('trip/1/plan');await p.locator('[data-trip=archive]').click();await p.waitForFunction(()=>state.route==='trips'&&!document.querySelector('#main').inert);assert.equal(trip.state,'archived');assert.ok((await p.locator('.trip-card').innerText()).includes('已归档'));
+ const savedPlans=clone(plans),savedChecks=clone(trip.checklist),savedBookings=trip.lodging;
+ await p.locator('.trip-card .admin-more summary').click();const beforeCancel=writes.length;
+ p.once('dialog',d=>d.dismiss());await p.locator('.trip-card [data-trip=trash-trip]').click();assert.equal(writes.length,beforeCancel);
+ p.once('dialog',d=>d.accept());await p.locator('.trip-card [data-trip=trash-trip]').click();await p.waitForFunction(()=>!Trips.busy&&document.querySelector('#toast').textContent.includes('删除冲突'));assert.equal(await p.locator('.trip-card').count(),1);assert.equal(trip.deleted_at,undefined);
+ p.once('dialog',d=>d.accept());await p.locator('.trip-card [data-trip=trash-trip]').click();await p.waitForFunction(()=>!Trips.busy&&!document.querySelector('#main').inert&&!document.querySelector('.trip-card'));assert.equal(await p.locator('.trip-focus [data-trip=trash-trip]').count(),0);
+ assert.equal(await p.locator('.page-heading [href="#trips?state=trash"]').count(),1,'empty list still exposes recovery');
+ await p.locator('.page-heading .admin-more summary').click();await p.locator('.page-heading [href="#trips?state=trash"]').click();await p.waitForSelector('[data-trip=restore-trip]');
+ assert.equal(await p.locator('#trip-filter [name=state]').inputValue(),'trash');assert.equal(await p.locator('.trip-card h2 a').count(),0);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'trash overflow '+width);
+ if(width===390)await p.screenshot({path:'/tmp/trips-trash-phone.png',fullPage:true});
+ await go('trip/1/prepare');assert.ok((await p.locator('#main').innerText()).includes('找不到这趟旅行'));await p.locator('#main [href="#trips?state=trash"]').click();await p.waitForSelector('[data-trip=restore-trip]');
+ await p.locator('[data-trip=restore-trip]').click();await p.waitForFunction(()=>state.route==='trips'&&!Trips.busy&&!document.querySelector('#main').inert);
+ assert.equal(trip.state,'archived');assert.equal(trip.lodging,savedBookings);assert.deepEqual(trip.checklist,savedChecks);assert.deepEqual(plans,savedPlans);
+ await go('trip/1/prepare');await p.locator('.page-heading .admin-more summary').click();p.once('dialog',d=>d.accept());await p.locator('.page-heading [data-trip=trash-trip]').click();await p.waitForFunction(()=>state.route==='trips'&&!Trips.busy&&!document.querySelector('#main').inert);
+ await go('trips?state=trash');await p.locator('[data-trip=restore-trip]').click();await p.waitForFunction(()=>state.route==='trips'&&!Trips.busy&&!document.querySelector('#main').inert);
+ await go('trip/1/plan');await p.locator('[data-trip=archive]').click();await p.waitForSelector('.trip-focus [data-trip=trash-trip]',{state:'attached'});await p.locator('.trip-focus .admin-more summary').click();p.once('dialog',d=>d.accept());await p.locator('.trip-focus [data-trip=trash-trip]').click();await p.waitForFunction(()=>!Trips.busy&&!document.querySelector('#main').inert&&!document.querySelector('.trip-focus [data-trip=trash-trip]'));
  assert.deepEqual(errors,[]);assert.ok(writes.every(w=>w.path.startsWith('/api/admin/trips')));await p.evaluate(()=>{state.user=null;showLogin();});assert.equal(await p.locator('#main').innerText(),'');assert.equal(await p.locator('#admin-shell').isVisible(),false);
- await ctx.close();console.log('PASS '+width+': selected-candidate adoption, retry keeps input, private trip, booking/notes preservation, today navigation, visit marks, daily edit, versions/restore, existing-trip adoption, dashboard/filter/archive, logout and Safari clone fallback');
+ await ctx.close();console.log('PASS '+width+': selected-candidate adoption, retry keeps input, private trip, booking/notes preservation, today navigation, visit marks, daily edit, versions/restore, existing-trip adoption, dashboard/filter/archive, deletion/restore/deep links, logout and Safari clone fallback');
  }}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

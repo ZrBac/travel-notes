@@ -116,3 +116,7 @@ CREATE TABLE IF NOT EXISTS trip_records (
 );
 CREATE INDEX IF NOT EXISTS trip_records_record ON trip_records(record_id);
 INSERT INTO schema_migrations(version) VALUES(5) ON CONFLICT DO NOTHING;
+
+-- Reversible cleanup of accidental departures; related plans and notes stay intact.
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+INSERT INTO schema_migrations(version) VALUES(7) ON CONFLICT DO NOTHING;

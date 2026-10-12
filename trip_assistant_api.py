@@ -20,7 +20,7 @@ def json_dates(value):
 
 def trip_context(db, trip_id, day=None):
     integer(trip_id, 10**18-1, '关联旅行')
-    row = db().execute('SELECT * FROM trips WHERE id=%s', (trip_id,)).fetchone()
+    row = db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL', (trip_id,)).fetchone()
     if not row: abort(404, description='这趟旅行不存在')
     plan = db().execute('SELECT * FROM trip_plans WHERE trip_id=%s ORDER BY version DESC LIMIT 1', (trip_id,)).fetchone()
     notes = db().execute('SELECT id,captured_date,place,note,photos,revision FROM trip_notes WHERE trip_id=%s ORDER BY captured_date,id LIMIT 100', (trip_id,)).fetchall()
@@ -86,7 +86,7 @@ def register(app, db, payload, audit, render, validate_record):
     @app.get('/api/admin/trips/<int:trip_id>/assistant-context')
     def assistant_context(trip_id):
         if request.args.get('view')=='planning':
-            row=db().execute('SELECT * FROM trips WHERE id=%s',(trip_id,)).fetchone()
+            row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL',(trip_id,)).fetchone()
             if not row: abort(404,description='这趟旅行不存在')
             plan=db().execute("SELECT version,snapshot->'conditions' conditions FROM trip_plans WHERE trip_id=%s ORDER BY version DESC LIMIT 1",(trip_id,)).fetchone()
             return jsonify(context=json_dates({'trip':summary(row),'plan':plan}))
@@ -101,11 +101,11 @@ def register(app, db, payload, audit, render, validate_record):
         key=data.get('request_key')
         if key is not None and (not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key)): abort(400,description='提交标识不正确')
         db().execute('SELECT pg_advisory_xact_lock(74390511)')
+        row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(trip_id,)).fetchone()
+        if not row: abort(404,description='这趟旅行不存在')
         if key:
             previous=db().execute("SELECT id FROM agent_tasks WHERE request->>'assistant'='travel' AND request->>'request_key'=%s AND request->>'attached_trip_id'=%s AND request->>'created_by'=%s",(key,str(trip_id),str(session['admin_id']))).fetchone()
             if previous: return jsonify(id=previous['id'],already_saved=True)
-        row=db().execute('SELECT * FROM trips WHERE id=%s FOR UPDATE',(trip_id,)).fetchone()
-        if not row: abort(404,description='这趟旅行不存在')
         if type(data.get('revision')) is not int or row['revision']!=data['revision']: abort(409,description='旅行资料已更新，请刷新后再提交；补充要求仍保留')
         if row['state']=='archived' and action in ('adjust_day','check_departure'): abort(409,description='已归档旅行请先取消归档，再修改安排')
         info=db().execute("SELECT value FROM settings WHERE key='agent_service'").fetchone()
@@ -131,7 +131,7 @@ def register(app, db, payload, audit, render, validate_record):
 
     @app.get('/api/admin/trips/<int:trip_id>/assistant')
     def trip_assistant_tasks(trip_id):
-        trip=db().execute('SELECT revision FROM trips WHERE id=%s',(trip_id,)).fetchone()
+        trip=db().execute('SELECT revision FROM trips WHERE id=%s AND deleted_at IS NULL',(trip_id,)).fetchone()
         if not trip: abort(404,description='这趟旅行不存在')
         task_id=request.args.get('task_id')
         if task_id is not None and (not task_id.isascii() or not task_id.isdigit() or len(task_id)>18 or int(task_id)<1): abort(400,description='助手任务标识不正确')
@@ -155,14 +155,14 @@ def register(app, db, payload, audit, render, validate_record):
     def trip_assistant_apply(trip_id,task_id):
         data=payload();db().execute('SELECT pg_advisory_xact_lock(74390511)')
         task=workflow_task(db,task_id,trip_id,lock=True);action=task['request']['workflow']
+        row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(trip_id,)).fetchone()
+        if not row: abort(404,description='这趟旅行不存在')
         applied=task['request'].get('applied')
         if applied:
             if applied.get('record_id'):
                 record=db().execute('SELECT deleted_at FROM travel_records WHERE id=%s',(applied['record_id'],)).fetchone()
                 if not record or record['deleted_at']: abort(409,description='已存档足迹已删除，请先在回收站恢复；不会重复创建')
             return jsonify(**applied,already_saved=True)
-        row=db().execute('SELECT * FROM trips WHERE id=%s FOR UPDATE',(trip_id,)).fetchone()
-        if not row: abort(404,description='这趟旅行不存在')
         if type(data.get('revision')) is not int or data['revision']!=row['revision']: abort(409,description='旅行已更新，请重新核对建议')
         current_task(db,task,row);result=task['report']['workflow_result']
         if action=='adjust_day': abort(400,description='请通过行程采用按钮保存为新计划版本')
@@ -227,7 +227,7 @@ def register(app, db, payload, audit, render, validate_record):
 
     @app.get('/api/admin/trips/<int:trip_id>/notes')
     def trip_notes(trip_id):
-        row=db().execute('SELECT id,revision FROM trips WHERE id=%s',(trip_id,)).fetchone()
+        row=db().execute('SELECT id,revision FROM trips WHERE id=%s AND deleted_at IS NULL',(trip_id,)).fetchone()
         if not row: abort(404,description='这趟旅行不存在')
         raw=request.args.get('page','1')
         if not raw.isascii() or not raw.isdigit() or len(raw)>2 or not 1<=int(raw)<=5: abort(400,description='随记分页无效')
@@ -241,12 +241,12 @@ def register(app, db, payload, audit, render, validate_record):
         data=payload();key=data.get('request_key')
         if not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key): abort(400,description='提交标识不正确，请刷新重试')
         db().execute('SELECT pg_advisory_xact_lock(74390515)')
+        row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(trip_id,)).fetchone()
+        if not row: abort(404,description='这趟旅行不存在')
         previous=db().execute('SELECT id,trip_id FROM trip_notes WHERE request_key=%s',(key,)).fetchone()
         if previous:
             if previous['trip_id']!=trip_id: abort(409,description='提交标识已用于其他旅行')
             return jsonify(id=previous['id'],already_saved=True)
-        row=db().execute('SELECT * FROM trips WHERE id=%s FOR UPDATE',(trip_id,)).fetchone()
-        if not row: abort(404,description='这趟旅行不存在')
         if type(data.get('revision')) is not int or data['revision']!=row['revision']: abort(409,description='旅行资料已更新，请刷新核对后再保存；照片和随记仍保留')
         if db().execute('SELECT count(*) n FROM trip_notes WHERE trip_id=%s',(trip_id,)).fetchone()['n']>=100: abort(400,description='本次旅行已有 100 条随记，请合并或整理旧随记后再添加')
         values=note_values(data,row);values.update(trip_id=trip_id,request_key=key,created_by=session['admin_id'])
@@ -256,7 +256,7 @@ def register(app, db, payload, audit, render, validate_record):
 
     @app.put('/api/admin/trips/<int:trip_id>/notes/<int:note_id>')
     def trip_note_update(trip_id,note_id):
-        data=payload();row=db().execute('SELECT * FROM trips WHERE id=%s FOR UPDATE',(trip_id,)).fetchone()
+        data=payload();row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(trip_id,)).fetchone()
         note=db().execute('SELECT * FROM trip_notes WHERE id=%s AND trip_id=%s FOR UPDATE',(note_id,trip_id)).fetchone()
         if not row or not note: abort(404,description='这条随记不存在')
         if type(data.get('revision')) is not int or data['revision']!=note['revision']: abort(409,description='这条随记已更新，请重新核对')
@@ -267,7 +267,7 @@ def register(app, db, payload, audit, render, validate_record):
 
     @app.delete('/api/admin/trips/<int:trip_id>/notes/<int:note_id>')
     def trip_note_delete(trip_id,note_id):
-        data=payload();row=db().execute('SELECT * FROM trips WHERE id=%s FOR UPDATE',(trip_id,)).fetchone()
+        data=payload();row=db().execute('SELECT * FROM trips WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(trip_id,)).fetchone()
         note=db().execute('SELECT revision FROM trip_notes WHERE id=%s AND trip_id=%s FOR UPDATE',(note_id,trip_id)).fetchone()
         if not row or not note: abort(404,description='这条随记不存在')
         if type(data.get('revision')) is not int or data['revision']!=note['revision']: abort(409,description='这条随记已更新，请重新核对后再删除')

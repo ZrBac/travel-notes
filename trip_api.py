@@ -39,7 +39,7 @@ def iso_date(value):
 
 def summary(row, day=None):
     day=day or today()
-    phase='archived' if row['state']=='archived' else 'upcoming' if row['start_date']>day else 'completed' if row['end_date']<day else 'travelling'
+    phase='trash' if row.get('deleted_at') else 'archived' if row['state']=='archived' else 'upcoming' if row['start_date']>day else 'completed' if row['end_date']<day else 'travelling'
     return {**row, 'phase':phase, 'days':(row['end_date']-row['start_date']).days+1,
             'today_day':(day-row['start_date']).days+1 if phase=='travelling' else None,
             'countdown':max(0,(row['start_date']-day).days)}
@@ -51,7 +51,7 @@ def overview(db):
         coalesce(p.version,0) AS plan_version, jsonb_array_length(t.checklist) AS checklist_total,
         (SELECT count(*) FROM jsonb_array_elements(t.checklist) c WHERE c->>'done'='true') AS checklist_done
         FROM trips t LEFT JOIN LATERAL (SELECT version FROM trip_plans WHERE trip_id=t.id ORDER BY version DESC LIMIT 1) p ON true
-        WHERE t.state='active' AND t.end_date>=%s
+        WHERE t.deleted_at IS NULL AND t.state='active' AND t.end_date>=%s
         ORDER BY CASE WHEN t.start_date<=%s THEN 0 ELSE 1 END,t.start_date,t.id DESC LIMIT 1""",(day,day)).fetchone()
     return summary(row,day) if row else None
 
@@ -135,16 +135,16 @@ def merge_reservations(items,itinerary,version):
 
 
 def register(app,db,payload,audit,render):
-    def trip_row(trip_id,lock=False):
-        row=db().execute('SELECT * FROM trips WHERE id=%s'+(' FOR UPDATE' if lock else ''),(trip_id,)).fetchone()
-        if not row:abort(404,description='这趟旅行不存在')
+    def trip_row(trip_id,lock=False,include_deleted=False):
+        row=db().execute('SELECT * FROM trips WHERE id=%s'+('' if include_deleted else ' AND deleted_at IS NULL')+(' FOR UPDATE' if lock else ''),(trip_id,)).fetchone()
+        if not row:abort(404,description='这趟旅行不存在或已删除，可在旅行回收站查看')
         return row
 
     def current_plan(trip_id):
         return db().execute('SELECT * FROM trip_plans WHERE trip_id=%s ORDER BY version DESC LIMIT 1',(trip_id,)).fetchone()
 
-    def locked(trip_id,data):
-        row=trip_row(trip_id,True)
+    def locked(trip_id,data,include_deleted=False):
+        row=trip_row(trip_id,True,include_deleted)
         if data.get('revision')!=row['revision'] or type(data.get('revision')) is not int:
             abort(409,description='旅行已在其他页面更新，请刷新后再操作；本次输入未保存')
         return row
@@ -225,19 +225,19 @@ def register(app,db,payload,audit,render):
     @app.get('/api/admin/trips')
     def trips():
         day=today();page=request.args.get('page','1');q=request.args.get('q','').strip();state=request.args.get('state','')
-        if not page.isascii() or not page.isdigit() or len(page)>6 or int(page)<1 or len(q)>120 or state not in ('','active','archived'):
+        if not page.isascii() or not page.isdigit() or len(page)>6 or int(page)<1 or len(q)>120 or state not in ('','active','archived','trash'):
             abort(400,description='旅行筛选条件不正确')
-        where=[];params=[]
+        where=['deleted_at IS NOT NULL' if state=='trash' else 'deleted_at IS NULL'];params=[]
         if q:where.append('(title ILIKE %s OR destination ILIKE %s)');params.extend(['%'+q+'%']*2)
-        if state:where.append('state=%s');params.append(state)
+        if state and state!='trash':where.append('state=%s');params.append(state)
         condition=' WHERE '+' AND '.join(where) if where else ''
         total=db().execute('SELECT count(*) n FROM trips'+condition,params).fetchone()['n']
         pages=max(1,(total+11)//12);page=min(int(page),pages)
-        rows=db().execute('SELECT id,title,destination,start_date,end_date,people,state,revision,updated_at,'
+        rows=db().execute('SELECT id,title,destination,start_date,end_date,people,state,revision,updated_at,deleted_at,'
             '(SELECT max(version) FROM trip_plans WHERE trip_id=trips.id) AS plan_version FROM trips'+condition+
-            " ORDER BY CASE WHEN state='archived' THEN 3 WHEN start_date<=%s AND end_date>=%s THEN 0 WHEN start_date>%s THEN 1 ELSE 2 END,start_date,id DESC LIMIT 12 OFFSET %s",
+            " ORDER BY deleted_at DESC,CASE WHEN state='archived' THEN 3 WHEN start_date<=%s AND end_date>=%s THEN 0 WHEN start_date>%s THEN 1 ELSE 2 END,start_date,id DESC LIMIT 12 OFFSET %s",
             (*params,day,day,day,(page-1)*12)).fetchall()
-        return jsonify(trips=[summary(row,day) for row in rows],total=total,page=page,pages=pages,focus=overview(db))
+        return jsonify(trips=[summary(row,day) for row in rows],total=total,page=page,pages=pages,focus=None if state=='trash' else overview(db))
 
     @app.get('/api/admin/trips/source')
     def trip_source():
@@ -252,8 +252,10 @@ def register(app,db,payload,audit,render):
         if key is not None and (not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key)):abort(400,description='提交标识不正确')
         db().execute('SELECT pg_advisory_xact_lock(74390515)')
         if key:
-            existing=db().execute('SELECT id FROM trips WHERE create_key=%s',(key,)).fetchone()
-            if existing:return jsonify(id=existing['id'],already_saved=True)
+            existing=db().execute('SELECT id,deleted_at FROM trips WHERE create_key=%s',(key,)).fetchone()
+            if existing:
+                if existing['deleted_at']:abort(409,description='之前创建的旅行已在回收站，请先恢复或重新新建')
+                return jsonify(id=existing['id'],already_saved=True)
         plan=None;guide_id=None;task_id=None;defaults={}
         if data.get('source') is not None:
             plan,guide_id,task_id,_=source(data['source']);defaults={'destination':plan['destination'],**{k:v for k,v in plan['conditions'].items() if k in ('people','companions')}}
@@ -287,6 +289,22 @@ def register(app,db,payload,audit,render):
         if plan and values['destination']!=row['destination']:abort(400,description='已有计划的目的地请通过采用新方案修改')
         revision=save_trip(row,**values);audit('trip.update',trip_id);db().commit();return jsonify(ok=True,revision=revision,trip=summary(trip_row(trip_id)))
 
+    @app.delete('/api/admin/trips/<int:trip_id>')
+    def trip_trash(trip_id):
+        row=locked(trip_id,payload(),True)
+        if row['deleted_at']:return jsonify(ok=True,already_deleted=True,revision=row['revision'])
+        revision=save_trip(row,deleted_at=datetime.now(ZoneInfo('UTC')))
+        audit('trip.trash',trip_id,{'title':row['title']});db().commit()
+        return jsonify(ok=True,revision=revision)
+
+    @app.post('/api/admin/trips/<int:trip_id>/restore')
+    def trip_restore(trip_id):
+        row=locked(trip_id,payload(),True)
+        if not row['deleted_at']:return jsonify(ok=True,already_restored=True,revision=row['revision'])
+        revision=save_trip(row,deleted_at=None)
+        audit('trip.restore',trip_id,{'title':row['title']});db().commit()
+        return jsonify(ok=True,revision=revision)
+
     @app.post('/api/admin/trips/<int:trip_id>/plan')
     def trip_plan(trip_id):
         data=payload();workflow=None
@@ -295,7 +313,9 @@ def register(app,db,payload,audit,render):
             db().execute('SELECT pg_advisory_xact_lock(74390511)')
             from trip_assistant_api import workflow_task
             previous=workflow_task(db,data['assistant_task'],trip_id,'adjust_day',True)
-            if previous['request'].get('applied'): return jsonify(ok=True,already_saved=True,**previous['request']['applied'])
+            if previous['request'].get('applied'):
+                trip_row(trip_id,True)
+                return jsonify(ok=True,already_saved=True,**previous['request']['applied'])
         row=locked(trip_id,data)
         if 'restore_version' in data:
             version=integer(data['restore_version'],10**8,'计划版本')

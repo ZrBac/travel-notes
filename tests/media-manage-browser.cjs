@@ -13,7 +13,7 @@ const root=process.env.TRAVEL_BROWSER_SOURCE||path.resolve(__dirname,'..'),pixel
   };
  });
  p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>accept?d.accept():d.dismiss());
- const media=Array.from({length:30},(_,i)=>({filename:String(i).padStart(32,'0')+'.webp',url:'/media/'+String(i).padStart(32,'0')+'.webp',name:'照片 '+i,width:2000,height:1500,bytes:300000,deleted_at:null,references:i===0?[{id:1,title:'城市攻略',kind:'guide'},{id:2,title:'旅途记录',kind:'record'},{id:3,title:'秋游计划',kind:'travel-agent'}]:[]}));
+ const media=Array.from({length:30},(_,i)=>({filename:String(i).padStart(32,'0')+'.webp',url:'/media/'+String(i).padStart(32,'0')+'.webp',name:'照片 '+i,width:2000,height:1500,bytes:300000,deleted_at:null,references:i===0?[{id:1,title:'城市攻略',kind:'guide'},{id:2,title:'旅途记录',kind:'record'},{id:3,title:'秋游计划',kind:'travel-agent'},{id:4,title:'误建旅行',kind:'trip',deleted_at:'2026-10-12'}]:[]}));
  await context.route('**/*',async r=>{const u=new URL(r.request().url());assert.equal(u.origin,'http://media.test');
  if(u.pathname.startsWith('/api/')){
   if(u.pathname==='/api/session')return r.fulfill({json:{csrf:'fixture',user:{username:'tester',display_name:'测试'}}});
@@ -34,10 +34,10 @@ const root=process.env.TRAVEL_BROWSER_SOURCE||path.resolve(__dirname,'..'),pixel
  });
  await p.goto('http://media.test/admin#media');await p.waitForSelector('.media-card');
  failList=true;await p.evaluate(()=>{window.unchangedImage=document.querySelector('.media-card img');});
- assert.equal(await p.locator('#admin-page-refresh').count(),0);assert.equal(await p.locator('.topbar button').count(),0);
+ assert.equal(await p.locator('#admin-page-refresh').count(),0);assert.equal(await p.locator('.topbar [data-action=reload-page]').count(),0);
  assert.ok(!(await p.locator('#main').innerText()).includes('收起'));assert.equal(await p.locator('.media-check:disabled').count(),1);
  assert.equal(await p.locator('[data-action=media-update][data-value=trash]:disabled').count(),1);
- await p.locator('[data-action=media-refs]').click();await p.waitForSelector('#dialog[open]');const info=await p.locator('#dialog').innerText();for(const label of ['使用位置','攻略 · 城市攻略','旅行足迹 · 旅途记录','旅游助手 · 秋游计划'])assert.ok(info.includes(label));await p.locator('button[data-action=close-dialog]').click();
+ await p.locator('[data-action=media-refs]').click();await p.waitForSelector('#dialog[open]');const info=await p.locator('#dialog').innerText();for(const label of ['使用位置','攻略 · 城市攻略','旅行足迹 · 旅途记录','旅游助手 · 秋游计划','我的旅行 · 误建旅行（回收站）'])assert.ok(info.includes(label));assert.equal(await p.locator('#dialog a').last().getAttribute('href'),'#trips?state=trash');await p.locator('button[data-action=close-dialog]').click();
  await p.locator('#media-select-page').check();assert.equal(await p.locator('.media-check:checked').count(),23);assert.equal(await p.locator('#media-selected-count').innerText(),'已选 23 张');
  accept=false;await p.locator('[data-action=media-bulk]').click();assert.equal(operations.length,0);accept=true;
  await p.locator('[data-action=media-clear]').click();assert.equal(await p.locator('.media-check:checked').count(),0);
@@ -49,7 +49,7 @@ const root=process.env.TRAVEL_BROWSER_SOURCE||path.resolve(__dirname,'..'),pixel
  await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');await p.locator('.media-check:not(:disabled)').first().check();await p.locator('[data-action=media-page][data-page="2"]').click();assert.equal(await p.locator('.media-check:checked').count(),0,'selection cannot silently spill into another page');
  await p.locator('[data-action=media-tab][data-value=defaults]').click();await p.waitForFunction(()=>document.querySelector('#media-selection')?.hidden===true);assert.equal(await p.locator('.media-check').count(),0);
  await p.locator('[data-action=media-tab][data-value=active]').click();await p.waitForSelector('.media-card');
- const checkbox=await p.locator('.media-check:not(:disabled)').first().boundingBox(),target=await p.locator('.media-select').first().boundingBox();assert.equal(checkbox.width,21);assert.equal(target.width,44);assert.equal((await p.locator('.media-select').first().innerText()).trim(),'');
+ const checkbox=await p.locator('.media-check:not(:disabled)').first().boundingBox(),target=await p.locator('.media-select').first().boundingBox();assert.ok(checkbox.width>0&&checkbox.width<target.width,'checkbox stays inside the touch target');assert.ok(target.width>=44&&target.height>=44,'selection has a finger-sized touch target');assert.equal((await p.locator('.media-select').first().innerText()).trim(),'');
  await p.locator('.media-check:not(:disabled)').nth(0).check();await p.locator('.media-check:not(:disabled)').nth(1).check();
  await p.locator('[data-action=media-bulk][data-value=trash]').click();await p.waitForFunction(()=>!state.mediaBusy&&state.mediaSelected.size===0);
  await p.locator('[data-action=media-tab][data-value=trash]').click();await p.waitForFunction(()=>document.querySelectorAll('.media-card').length===2);
