@@ -1,6 +1,6 @@
 // Every request is intercepted; no real map tiles, models or production writes.
 const {chromium}=require('/opt/travel-notes/test-tools/node_modules/playwright');
-const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const root=path.resolve(__dirname,'..');
 const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aJpcAAAAASUVORK5CYII=','base64');
 const data={destination:'南京',country:'中国',stops:['老门东','南京博物院','缺少坐标的地点'],waypoints:[{name:'老门东',lat:32.011,lng:118.787,source:'https://example.com/first'},{name:'南京博物院',lat:32.041,lng:118.825,source:'https://example.com/second'},{name:'缺少坐标的地点',lat:true,lng:118.8,source:'javascript:alert(1)'}]};
@@ -18,7 +18,7 @@ const html='<!doctype html><meta charset="utf-8"><meta name="viewport" content="
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html',headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://tile.openstreetmap.org; connect-src 'self'",'Referrer-Policy':'same-origin'}});
    if(url.pathname.endsWith('/leaflet.js')&&failLibrary){failLibrary=false;return route.abort();}
    if(url.pathname.endsWith('/leaflet.js')&&delayLibrary)await new Promise(resolve=>setTimeout(resolve,250));
-   const file=path.join(root,url.pathname);return route.fulfill({body:fs.readFileSync(file),contentType:url.pathname.endsWith('.css')?'text/css':'text/javascript'});
+   const file=path.join(root,url.pathname),raw=fs.readFileSync(file);if(url.pathname.includes('/vendor/leaflet/'))assert.equal(url.searchParams.get('v'),crypto.createHash('sha256').update(raw).digest('hex').slice(0,16),'map cache version matches the shipped file bytes');return route.fulfill({body:raw,contentType:url.pathname.endsWith('.css')?'text/css':'text/javascript'});
   });
   await page.goto('http://journey.test/');await page.waitForFunction(()=>typeof JourneyView!=='undefined');await page.evaluate(()=>JourneyView.mount(document.querySelector('#app')));
   assert.equal(await page.locator('.journey-stop-nav').count(),3);assert.equal(requests.filter(r=>r.url.includes('/leaflet.')).length,0,'map resources are absent before a click');
