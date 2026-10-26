@@ -135,6 +135,8 @@
 .admin-space .filter-form select { max-width: 160px; }
 .admin-space .filter-form select, .admin-space .filter-form input { margin: 0; }
 .admin-space .pagination { font-size: 12px; gap: 10px; }
+.admin-space .record-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto auto; }
+.admin-space .record-filters select { width: 100%; }
 .admin-space .empty { background: #f9faf6; border: 1px dashed #dde5d5; padding: 48px 20px; border-radius: 12px; }
 .admin-space .empty h2 { font-family: inherit; font-size: 18px; }
 .admin-space .empty p { font-size: 13px; }
@@ -221,11 +223,14 @@
   .admin-space .panel h2 { font-size: 16px; }
   .admin-space .filter-form input { min-width: 0; }
   .admin-space .filter-form select { width: 100%; max-width: none; }
+  .admin-space .record-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-space .record-filters input, .admin-space .record-filters select { grid-column: 1 / -1; width: 100%; }
   .admin-space .admin-card-table { border-radius: 0; }
   .admin-space #main .admin-card-table.has-selection thead th.check { background: transparent; padding: 0 0 12px; }
   .admin-space #main .admin-card-table tbody tr { padding: 16px; border-radius: 12px; border-color: #e1e8d7; }
   .admin-space #main .admin-card-table td { padding: 8px 0; font-size: 13px; }
   .admin-space #main .admin-card-table td.card-title { padding: 0 0 14px; }
+  .admin-space #main .admin-card-table.has-selection td.card-title { padding-right: 40px; }
   .admin-space #main .admin-card-table .title-cell { min-width: 0; gap: 12px; }
   .admin-space .admin-card-table .title-cell img { width: 52px; height: 52px; border-radius: 9px; }
   .admin-space .admin-card-table .table-actions { max-width: none; }

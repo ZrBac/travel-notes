@@ -87,11 +87,12 @@ const TravelAgent = (()=>{
     timer=setTimeout(async()=>{if(token!==generation||state.route!=='agent')return;try{await refresh(token);}catch(e){if(token===generation&&$('#agent-overview'))$('#agent-overview').textContent=e.message;}finally{if(token===generation&&state.route==='agent')schedule(token);}},4000);
   }
   function bind(){
+    watchUnsavedForm($('#agent-task-form'));
     $('#agent-task-form').addEventListener('submit',async e=>{
       e.preventDefault();e.stopImmediatePropagation();if(busy)return;const form=e.target;if(!form.reportValidity())return;
-      busy=true;const submit=$('button[type=submit]',form);submit.disabled=true;$('#agent-form-error').textContent='';
-      try{const data=Object.fromEntries(new FormData(form));if(form.dataset.parent)data.parent_id=Number(form.dataset.parent);const result=await api('/admin/agent/tasks',{method:'POST',body:data});selected=result.id;form.prompt.value='';delete form.dataset.parent;$('[data-agent=new]').hidden=true;$('#agent-followup-note').textContent='任务已提交，关闭页面后仍会继续。';toast('任务已提交');}
-      catch(e){$('#agent-form-error').textContent=e.message;}finally{busy=false;submit.disabled=false;await refresh().catch(()=>{});schedule(generation);}
+      busy=true;form.inert=true;const submit=$('button[type=submit]',form);submit.disabled=true;$('#agent-form-error').textContent='';
+      try{const data=Object.fromEntries(new FormData(form));if(form.dataset.parent)data.parent_id=Number(form.dataset.parent);const result=await api('/admin/agent/tasks',{method:'POST',body:data});selected=result.id;form.prompt.value='';delete form.dataset.parent;markFormSaved(form);$('[data-agent=new]').hidden=true;$('#agent-followup-note').textContent='任务已提交，关闭页面后仍会继续。';toast('任务已提交');}
+      catch(e){$('#agent-form-error').textContent=e.message;}finally{busy=false;form.inert=false;submit.disabled=false;await refresh().catch(()=>{});schedule(generation);}
     });
     $('#main').addEventListener('click',handle);
   }

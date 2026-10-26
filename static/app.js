@@ -24,8 +24,7 @@ const paths = {
   logout:'<path d="M9 4H4v16h5M9 12h12m-4-4 4 4-4 4"/>',
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.book}</svg>`;
-const state = { admin:false, csrf:'', guides:[], query:'', country:'', tag:'', destination:'', status:'', sort:'updated', dirty:false, route:'', load:0, cover:'/static/assets/lake.jpg', afterLogin:null };
-const covers = ['lake','kyoto','mountain','italy','alps'];
+const state = { admin:false, csrf:'', guides:[], query:'', country:'', tag:'', destination:'', status:'', sort:'updated', route:'', load:0 };
 const statusName = { public:'公开', private:'私密', draft:'草稿' };
 const autumnTag = '2026秋游备选';
 function guideTopics(guide){return [...new Set(guide.tags||[])].filter(t=>t&&!['参考','AI参考',autumnTag].includes(t)).slice(0,3);}
@@ -64,7 +63,6 @@ async function api(path, options={}) {
   }catch(error){if(timedOut)throw Error('加载超时，请点击重试。');throw error;}
   finally{clearTimeout(timer);if(read)source.removeEventListener('abort',abort);}
 }
-async function loadGuides(){state.guides=(await api('/guides')).guides;}
 function updateShell(view='home') {
   document.body.dataset.view=view;
   const navView=({guide:'guides',record:'footprints'})[view]||view;
@@ -92,8 +90,8 @@ function updateShell(view='home') {
 function heading(title, description, eyebrow='旅行收藏') {
   return `<section class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></section>`;
 }
-function card(guide, trash=false) {
-  return `<article class="guide-card"><a href="#guide/${guide.id}" aria-label="查看攻略：${esc(guide.title)}"><div class="card-image-wrap"><img class="card-image" data-travel-src="${esc(travelImageUrl(guide.cover,640))}" alt="${esc(guide.destination)}攻略封面" loading="lazy"><span class="place-badge">${icon('pin')}${esc(guide.country?`${guide.country} · ${guide.destination}`:guide.destination)}</span>${guide.sample?'<span class="sample-badge">示例攻略</span>':''}</div><div class="card-body"><h3 class="card-title">${esc(guide.title)}</h3><p class="card-summary">${esc(guide.summary||'一段新的旅程，等你慢慢记录。')}</p><div class="card-tags">${guideTopics(guide).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${state.admin&&guide.status!=='public'?`<span class="status-badge ${guide.status}">${statusName[guide.status]}</span>`:''}</div></div><div class="card-footer"><span>${icon('clock')}${guide.days} 天行程</span><span>${date(guide.updated_at)} 更新</span></div></a>${trash?`<div class="card-admin"><button class="button secondary small" data-action="restore" data-id="${guide.id}">${icon('restore')}恢复攻略</button></div>`:''}</article>`;
+function card(guide) {
+  return `<article class="guide-card"><a href="#guide/${guide.id}" aria-label="查看攻略：${esc(guide.title)}"><div class="card-image-wrap"><img class="card-image" data-travel-src="${esc(travelImageUrl(guide.cover,640))}" alt="${esc(guide.destination)}攻略封面" loading="lazy"><span class="place-badge">${icon('pin')}${esc(guide.country?`${guide.country} · ${guide.destination}`:guide.destination)}</span>${guide.sample?'<span class="sample-badge">示例攻略</span>':''}</div><div class="card-body"><h3 class="card-title">${esc(guide.title)}</h3><p class="card-summary">${esc(guide.summary||'一段新的旅程，等你慢慢记录。')}</p><div class="card-tags">${guideTopics(guide).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${state.admin&&guide.status!=='public'?`<span class="status-badge ${guide.status}">${statusName[guide.status]}</span>`:''}</div></div><div class="card-footer"><span>${icon('clock')}${guide.days} 天行程</span><span>${date(guide.updated_at)} 更新</span></div></a></article>`;
 }
 function empty(title,copy,action=''){return `<div class="empty">${icon('map')}<h3>${title}</h3><p>${copy}</p>${action}</div>`;}
 function home(){Footprints.home(card);}
@@ -123,17 +121,17 @@ function renderCards(){
   if(state.sort==='title')guides.sort((a,b)=>a.title.localeCompare(b.title,'zh-CN'));
   if(state.sort==='days')guides.sort((a,b)=>a.days-b.days);
   $('#result-count').textContent=guides.length;
-  $('#guide-grid').innerHTML=guides.length?guides.map(g=>card(g)).join(''):empty('还没有找到这段旅程','换个关键词，或写下你的第一篇攻略。','<button class="button secondary" data-action="clear">清除筛选</button>');
+  $('#guide-grid').innerHTML=guides.length?guides.map(g=>card(g)).join(''):empty('还没有找到这段旅程','换个关键词，或清除筛选查看全部攻略。','<button class="button secondary" data-action="clear">清除筛选</button>');
 }
 function destinations(){
   updateShell('destinations');const groups=new Map();state.guides.forEach(g=>{const list=groups.get(g.destination)||[];list.push(g);groups.set(g.destination,list);});
-  $('#app').innerHTML=heading('目的地','按地点浏览已收录的旅行攻略。','想去的远方')+`<div class="destination-grid">${[...groups].map(([name,list])=>`<button class="destination-card" data-action="destination" data-value="${esc(name)}"><img data-travel-src="${esc(travelImageUrl(list[0].cover,640))}" alt="${esc(name)}旅行封面" loading="lazy"><p>${esc(list[0].country||'下一站')}</p><h2>${esc(name)}</h2><p>${list.length} 篇攻略 · 探索这个目的地 ↗</p></button>`).join('')||empty('目的地清单还是空的','新建攻略时填写目的地，这里就会自动整理。')}</div>`;
+  $('#app').innerHTML=heading('目的地','按地点浏览已收录的旅行攻略。','想去的远方')+`<div class="destination-grid">${[...groups].map(([name,list])=>`<button class="destination-card" data-action="destination" data-value="${esc(name)}"><img data-travel-src="${esc(travelImageUrl(list[0].cover,640))}" alt="${esc(name)}旅行封面" loading="lazy"><p>${esc(list[0].country||'下一站')}</p><h2>${esc(name)}</h2><p>${list.length} 篇攻略 · 探索这个目的地 ↗</p></button>`).join('')||empty('目的地清单还是空的','公开攻略会按目的地整理在这里。')}</div>`;
 }
 
 async function detail(id, generation, saved=false){
   const savedEntry=saved?await TravelPWA.read(id):null;
   const {guide:g}=savedEntry||await api(`/guides/${id}?view=read`);if(state.load!==generation)return;updateShell(saved?'offline':'guide');document.title=`${g.title} · ${state.site?.site_name||'行笺'}`;
-  $('#app').innerHTML=`<div class="detail-top"><a class="back-link" href="#${saved?'offline':g.deleted_at?'trash':g.tags.includes(autumnTag)?'autumn':'guides'}">${icon('back')}返回${saved?'已保存攻略':g.deleted_at?'回收站':g.tags.includes(autumnTag)?'七地对比':'攻略收藏'}</a>${state.admin?`<div class="detail-actions">${g.deleted_at?`<button class="button secondary" data-action="restore" data-id="${g.id}">${icon('restore')}恢复攻略</button>`:`<a class="button secondary" href="/admin#edit/${g.id}">${icon('edit')}编辑攻略</a><button class="button ghost" data-action="delete" data-id="${g.id}" aria-label="将攻略移入回收站">${icon('trash')}</button>`}</div>`:''}</div><img class="detail-cover" fetchpriority="high" ${saved?`src="${esc(savedEntry.cover)}"`:`data-travel-src="${esc(travelImageUrl(g.cover,1280))}"`} alt="${esc(g.destination)}攻略封面"><div class="detail-layout"><article><header class="article-header">${g.sample?'<span class="sample-note">示例攻略 · 可登录后编辑为自己的旅行记录</span>':''}<h1>${esc(g.title)}</h1><p class="summary">${esc(g.summary)}</p><div class="article-meta"><span>${icon('pin')} ${esc(g.country)} · ${esc(g.destination)}</span><span>${date(g.updated_at)} 更新</span>${state.admin?`<span class="status-badge ${g.status}">${statusName[g.status]}${g.deleted_at?' · 已删除':''}</span>`:''}</div></header><div class="prose">${PublicImages.prepareHTML(g.html||'<p>这篇攻略还在慢慢整理中。</p>')}</div>${g.sources?`<section class="source-box"><h3>参考资料与来源</h3>${esc(g.sources)}</section>`:''}</article><aside class="detail-aside"><h3>这段旅程，一眼看懂</h3>${[['clock','建议天数',`${g.days} 天`],['sun','适合季节',g.season||'尚未填写'],['money','人均预算',g.budget||'尚未填写'],['map','目的地',g.destination],['book','最后核实',g.verified_at||'出发前记得核实']].map(([i,l,v])=>`<div class="info-row">${icon(i)}<span><small>${l}</small><strong>${esc(v)}</strong></span></div>`).join('')}<div class="aside-tags">${guideTopics(g).map(t=>`<button class="chip" data-action="tag" data-value="${esc(t)}"># ${esc(t)}</button>`).join('')}</div></aside></div>`;
+  $('#app').innerHTML=`<div class="detail-top"><a class="back-link" href="#${saved?'offline':g.deleted_at?'trash':g.tags.includes(autumnTag)?'autumn':'guides'}">${icon('back')}返回${saved?'已保存攻略':g.deleted_at?'回收站':g.tags.includes(autumnTag)?'七地对比':'攻略收藏'}</a>${state.admin?`<div class="detail-actions">${g.deleted_at?`<a class="button secondary" href="/admin#trash">管理回收站</a>`:`<a class="button secondary" href="/admin#edit/${g.id}">${icon('edit')}编辑攻略</a>`}</div>`:''}</div><img class="detail-cover" fetchpriority="high" ${saved?`src="${esc(savedEntry.cover)}"`:`data-travel-src="${esc(travelImageUrl(g.cover,1280))}"`} alt="${esc(g.destination)}攻略封面"><div class="detail-layout"><article><header class="article-header">${g.sample?'<span class="sample-note">示例攻略 · 可登录后编辑为自己的旅行记录</span>':''}<h1>${esc(g.title)}</h1><p class="summary">${esc(g.summary)}</p><div class="article-meta"><span>${icon('pin')} ${esc(g.country)} · ${esc(g.destination)}</span><span>${date(g.updated_at)} 更新</span>${state.admin?`<span class="status-badge ${g.status}">${statusName[g.status]}${g.deleted_at?' · 已删除':''}</span>`:''}</div></header><div class="prose">${PublicImages.prepareHTML(g.html||'<p>这篇攻略还在慢慢整理中。</p>')}</div>${g.sources?`<section class="source-box"><h3>参考资料与来源</h3>${esc(g.sources)}</section>`:''}</article><aside class="detail-aside"><h3>这段旅程，一眼看懂</h3>${[['clock','建议天数',`${g.days} 天`],['sun','适合季节',g.season||'尚未填写'],['money','人均预算',g.budget||'尚未填写'],['map','目的地',g.destination],['book','最后核实',g.verified_at||'出发前记得核实']].map(([i,l,v])=>`<div class="info-row">${icon(i)}<span><small>${l}</small><strong>${esc(v)}</strong></span></div>`).join('')}<div class="aside-tags">${guideTopics(g).map(t=>`<button class="chip" data-action="tag" data-value="${esc(t)}"># ${esc(t)}</button>`).join('')}</div></aside></div>`;
   JourneyView.mount($('#app'),g);
   const sections=[...document.querySelectorAll('.prose h2')];
   if(sections.length>=8){
@@ -154,55 +152,47 @@ async function detail(id, generation, saved=false){
   }
 
 }
-async function trash(generation){
-  if(!state.admin){home();openLogin(()=>location.hash='trash');return;}
-  const {guides}=await api('/guides?trash=1');if(state.load!==generation)return;updateShell('trash');
-  $('#app').innerHTML=heading('暂时收起，不必告别。','删除的攻略会留在这里，随时可以恢复。','A PLACE FOR SECOND THOUGHTS')+`<div class="guides-grid">${guides.map(g=>card(g,true)).join('')||empty('回收站是空的','被删除的攻略会出现在这里。')}</div>`;
-}
-function input(name,label,value='',placeholder='',extra=''){return `<label>${label}<input name="${name}" value="${esc(value)}" placeholder="${placeholder}" ${extra}></label>`;}
-async function editor(id,generation){
-  if(!state.admin){home();openLogin(()=>{location.hash=id?`edit/${id}`:'new';route();});return;}
-  const g=id?(await api(`/guides/${id}`)).guide:{title:'',destination:'',country:'',summary:'',body:'',tags:[],days:3,season:'',budget:'',sources:'',verified_at:'',status:'draft',cover:'/static/assets/lake.jpg'};
-  if(state.load!==generation)return;if(g.deleted_at)throw new Error('请先从回收站恢复攻略');state.cover=g.cover;state.dirty=false;updateShell(id?'edit':'new');
-  $('#app').innerHTML=`<a class="back-link" href="#${id?`guide/${id}`:'home'}">${icon('back')}返回${id?'攻略详情':'攻略收藏'}</a><section class="page-heading editor-heading"><div><div class="eyebrow">MAKE ROOM FOR YOUR NEXT JOURNEY</div><h1>${id?'整理这段旅程':'写下新的远方'}</h1><p>从一个目的地开始，慢慢补全旅途的细节。</p></div><div class="editor-buttons"><button type="submit" form="editor-form" name="save" value="draft" class="button secondary">存为草稿</button><button type="submit" form="editor-form" name="save" value="selected" class="button primary">${icon('book')}保存攻略</button></div></section><form id="editor-form"><div class="editor-layout"><div><section class="editor-panel"><h3>旅行的基本信息</h3>${input('title','攻略标题 *',g.title,'给这段旅程起个名字','required maxlength="100"')}<div class="field-row">${input('destination','目的地 *',g.destination,'例如：京都','required maxlength="80"')}${input('country','国家 / 地区',g.country,'例如：日本','maxlength="50"')}</div><label>一句话简介<textarea name="summary" rows="2" maxlength="300" placeholder="这次旅行最打动你的是什么？">${esc(g.summary)}</textarea></label><div class="field-row">${input('days','建议天数',g.days,'','type="number" min="1" max="365" required')}${input('season','适合季节',g.season,'例如：春季 / 秋季','maxlength="60"')}</div>${input('budget','人均预算',g.budget,'例如：约 ¥3,000，不含往返交通','maxlength="60"')}</section><section class="editor-panel"><h3>攻略正文</h3><div class="editor-toolbar"><button type="button" data-format="heading">H2 标题</button><button type="button" data-format="bold"><strong>B</strong> 加粗</button><button type="button" data-format="list">☰ 列表</button><button type="button" data-action="body-image">${icon('image')} 插入图片</button><span class="toolbar-hint">支持 Markdown 排版</span></div><textarea name="body" id="editor-body" class="editor-body" maxlength="100000" placeholder="## 行程安排&#10;&#10;### 第 1 天 · 抵达目的地&#10;写下交通、住宿、想去的地方…&#10;&#10;## 交通与住宿&#10;&#10;## 出发前备忘">${esc(g.body)}</textarea><div class="editor-status" id="editor-status">改动后请点击保存攻略。</div></section><section class="editor-panel"><h3>参考资料与时效</h3><label>资料来源 / 参考链接<textarea name="sources" rows="3" maxlength="5000" placeholder="记录原文链接或信息来源，方便以后核对。">${esc(g.sources)}</textarea></label>${input('verified_at','最后核实日期',g.verified_at,'','type="date"')}</section></div><aside class="editor-sidebar"><section class="editor-panel"><h3>攻略封面</h3><img class="cover-preview" id="cover-preview" src="${esc(g.cover)}" alt="当前封面预览"><div class="cover-choices">${covers.map(c=>`<button type="button" class="cover-choice ${g.cover.endsWith(c+'.jpg')?'active':''}" data-action="cover" data-value="/static/assets/${c}.jpg" aria-label="选择${({lake:'湖畔',kyoto:'京都',mountain:'山野',italy:'海边',alps:'雪山'})[c]}封面"><img src="/static/assets/${c}.jpg" alt=""></button>`).join('')}</div><button type="button" class="button secondary upload-button" data-action="upload-cover">${icon('image')}上传自己的图片</button><p class="editor-status">支持 JPG、PNG、WebP，单张不超过 30 MB。</p></section><section class="editor-panel"><h3>整理与可见范围</h3><label>保存状态<select name="status"><option value="draft" ${g.status==='draft'?'selected':''}>草稿 · 仅自己可见</option><option value="private" ${g.status==='private'?'selected':''}>私密 · 仅自己可见</option><option value="public" ${g.status==='public'?'selected':''}>公开 · 所有访客可见</option></select></label>${input('tags','灵感标签',g.tags.join('，'),'例如：慢旅行，摄影','maxlength="300"')}<p class="field-help">多个标签用逗号分隔，最多 12 个。</p><div class="form-error" id="editor-error" role="alert"></div></section></aside></div><input id="cover-file" type="file" accept="image/jpeg,image/png,image/webp" hidden><input id="body-file" type="file" accept="image/jpeg,image/png,image/webp" hidden></form>`;
-  const form=$('#editor-form');form.addEventListener('input',markDirty);form.addEventListener('change',markDirty);
-  form.addEventListener('submit',async event=>{
-    event.preventDefault();const button=event.submitter;const values=Object.fromEntries(new FormData(form));values.tags=values.tags.split(/[,，]/).map(t=>t.trim()).filter(Boolean);values.cover=state.cover;if(button?.value==='draft')values.status='draft';
-    const buttons=document.querySelectorAll('[form="editor-form"]');buttons.forEach(b=>b.disabled=true);$('#editor-error').textContent='';
-    try{const saved=await api(id?`/guides/${id}`:'/guides',{method:id?'PUT':'POST',body:values});state.dirty=false;await loadGuides();toast(values.status==='draft'?'草稿已保存':'攻略已保存');location.hash=`guide/${saved.id}`;}catch(error){$('#editor-error').textContent=error.message;toast(error.message,true);}finally{buttons.forEach(b=>b.disabled=false);}
-  });
-  $('#cover-file').addEventListener('change',event=>uploadImage(event.target.files[0],false));
-  $('#body-file').addEventListener('change',event=>uploadImage(event.target.files[0],true));
-  form.querySelectorAll('[data-format]').forEach(button=>button.addEventListener('click',()=>{const input=$('#editor-body');const selected=input.value.slice(input.selectionStart,input.selectionEnd);const text=button.dataset.format==='heading'?`\n## ${selected||'小节标题'}\n`:button.dataset.format==='bold'?`**${selected||'重点内容'}**`:`\n- ${selected||'清单事项'}\n`;insertBody(text);}));
-}
-function markDirty(){state.dirty=true;const label=$('#editor-status');if(label)label.textContent='有尚未保存的改动。';}
-function insertBody(text){const field=$('#editor-body');field.setRangeText(text,field.selectionStart,field.selectionEnd,'end');field.focus();markDirty();}
-async function uploadImage(file,body){if(!file)return;if(file.size>30*1024*1024){toast('图片不能超过 30 MB',true);return;}const data=new FormData();data.append('image',file);toast('正在上传图片…');try{const {url}=await api('/upload',{method:'POST',body:data});if(body)insertBody(`\n![旅行照片](${url})\n`);else setCover(url);toast('图片已上传，保存攻略后生效');}catch(error){toast(error.message,true);}}
-function setCover(url){state.cover=url;$('#cover-preview').src=url;document.querySelectorAll('.cover-choice').forEach(b=>b.classList.toggle('active',b.dataset.value===url));markDirty();}
-$('#login-dialog').addEventListener('cancel',()=>{state.afterLogin=null;});
-function openLogin(callback=null){state.afterLogin=callback;$('#login-error').textContent='';$('#login-dialog').showModal();setTimeout(()=>$('[name="password"]',$('#login-form')).focus(),50);}
-function confirmDelete(){return new Promise(resolve=>{const dialog=$('#confirm-dialog');dialog.showModal();const finish=result=>{dialog.close();$('#confirm-ok').onclick=null;$('#confirm-cancel').onclick=null;dialog.oncancel=null;resolve(result);};$('#confirm-ok').onclick=()=>finish(true);$('#confirm-cancel').onclick=()=>finish(false);dialog.oncancel=event=>{event.preventDefault();finish(false);};});}
 function clearFilters(){state.query='';state.country='';state.destination='';state.tag='';state.status='';}
+// Keep the optional calculator out of the reading path. The inert template also
+// lets the existing PWA precache these exact versioned URLs for offline use.
+const splitAssets=new Map();
+function loadSplitAsset(source){
+  const url=source.src||source.href;
+  if(splitAssets.has(url))return splitAssets.get(url);
+  const node=document.createElement(source.tagName),pending=new Promise((resolve,reject)=>{
+    node.onload=resolve;
+    node.onerror=()=>{node.remove();splitAssets.delete(url);reject(Error('费用分摊组件暂时无法加载，请重试。'));};
+  });
+  splitAssets.set(url,pending);
+  if(source.tagName==='SCRIPT'){node.src=url;node.async=false;}else{node.rel='stylesheet';node.href=url;}
+  document.head.append(node);return pending;
+}
+async function openSplit(generation){
+  updateShell('split');
+  const assets=$('#split-assets').content;
+  let timer;
+  const ready=Promise.all([
+    loadSplitAsset(assets.querySelector('link')),
+    (async()=>{for(const script of assets.querySelectorAll('script'))await loadSplitAsset(script);})()
+  ]);
+  // A timed out request remains shared until it settles, avoiding duplicate
+  // script execution if the connection recovers after the user clicks retry.
+  try{await Promise.race([ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('费用分摊加载超时，请检查网络后重试。')),15000);})]);}
+  finally{clearTimeout(timer);}
+  if(generation===state.load)TravelSplit.mount();
+}
 document.addEventListener('click',async event=>{
   if(event.target.closest('.skip-link')){event.preventDefault();$('#app').focus();return;}
-  const close=event.target.closest('[data-close-login]');if(close){$('#login-dialog').close();state.afterLogin=null;return;}
-  const node=event.target.closest('[data-action]');if(!node)return;const action=node.dataset.action,value=node.dataset.value,id=node.dataset.id;
+  const node=event.target.closest('[data-action]');if(!node)return;const action=node.dataset.action,value=node.dataset.value;
   try{
     if(action==='retry-page')await route();
     if(action==='login')location.href='/admin';
-    if(action==='logout'){if(state.dirty&&!confirm('还有未保存的改动，确定退出登录？'))return;const data=await api('/logout',{method:'POST'});state.admin=false;state.csrf=data.csrf;state.dirty=false;clearFilters();await loadGuides();location.hash='home';home();toast('已退出管理空间');}
     if(action==='country'){state.country=value;guidesHome();}
     if(action==='status'){state.status=value;guidesHome();}
     if(action==='clear'){clearFilters();guidesHome();}
     if(action==='destination'||action==='tag'){clearFilters();state[action]=value;location.hash='guides';guidesHome();window.scrollTo(0,0);}
-    if(action==='delete'){if(await confirmDelete()){await api(`/guides/${id}`,{method:'DELETE'});await loadGuides();toast('已移入回收站，可随时恢复');location.hash='home';}}
-    if(action==='restore'){await api(`/guides/${id}/restore`,{method:'POST'});await loadGuides();toast('攻略已恢复');if(location.hash.startsWith('#guide'))location.hash=`guide/${id}`;await route();}
-    if(action==='cover')setCover(value);
-    if(action==='upload-cover')$('#cover-file').click();
-    if(action==='body-image')$('#body-file').click();
   }catch(error){toast(error.message,true);}
 });
-$('#login-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,button=$('button[type=submit]',form);button.disabled=true;$('#login-error').textContent='';try{const data=await api('/login',{method:'POST',body:Object.fromEntries(new FormData(form))});state.admin=true;state.csrf=data.csrf;form.password.value='';$('#login-dialog').close();await loadGuides();toast('欢迎回来，继续记录旅程吧');const callback=state.afterLogin;state.afterLogin=null;await route();if(callback)callback();}catch(error){$('#login-error').textContent=error.message;}finally{button.disabled=false;}});
 async function route(){
   let hash=location.hash.slice(1)||'home';
   // Keep old bookmarks usable without retaining a separate tag catalogue.
@@ -211,12 +201,11 @@ async function route(){
     const guideId=hash.match(/^guide\/(\d+)/)?.[1];let hasSaved=false;try{hasSaved=guideId&&await TravelPWA.has(guideId);}catch{}
     hash=hasSaved?'offline/'+guideId:'offline';history.replaceState(null,'','#'+hash);
   }
-  if(/^(edit|new)(\/|$)/.test(hash)){location.href='/admin#'+hash;return;}
-  if(state.dirty&&hash!==state.route){if(!confirm('还有未保存的改动，确定离开编辑页面？')){history.replaceState(null,'',`#${state.route}`);return;}state.dirty=false;}
+  if(/^(edit|new|trash)(\/|$)/.test(hash)){location.href='/admin#'+hash;return;}
   JourneyView.dispose($('#app'));cancelPublicReads();PublicImages.pause();TravelPWA.release();state.route=hash;const generation=++state.load;const [view,id]=hash.split('/');document.title=(state.site?.site_name||'行笺')+' · 攻略与旅行足迹';
-  if(['guide','edit','record'].includes(view)&&!/^\d+$/.test(id||'')){location.hash='home';return;}
+  if(['guide','record'].includes(view)&&!/^\d+$/.test(id||'')){location.hash='home';return;}
   const app=$('#app'),previous=app.firstChild;app.inert=true;app.setAttribute('aria-busy','true');const loading=setTimeout(()=>{if(state.load===generation&&app.firstChild===previous)app.innerHTML='<div class="loading">正在整理你的旅行灵感…</div>';},120);
-  try{if(view==='split')TravelSplit.mount();else if(view==='offline'){if(id&&/^\d+$/.test(id))await detail(id,generation,true);else await TravelPWA.list(generation);}else if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='guide')await detail(id,generation);else if(view==='edit')await editor(id,generation);else if(view==='new')await editor(null,generation);else if(view==='trash')await trash(generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#offline">查看已保存攻略</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
+  try{if(view==='split')await openSplit(generation);else if(view==='offline'){if(id&&/^\d+$/.test(id))await detail(id,generation,true);else await TravelPWA.list(generation);}else if(view==='guides')guidesHome();else if(view==='footprints')await Footprints.list(generation,id||'');else if(view==='record')await Footprints.detail(id,generation);else if(view==='autumn')autumn();else if(view==='destinations')destinations();else if(view==='guide')await detail(id,generation);else home();if(state.load===generation)window.scrollTo(0,0);}catch(error){if(state.load!==generation||error.name==='AbortError')return;$('#app').innerHTML=empty('这段旅程暂时无法打开',esc(error.message),'<button class="button secondary" data-action="retry-page">重新加载</button> <a class="button secondary" href="#offline">查看已保存攻略</a>');}finally{clearTimeout(loading);if(state.load===generation){app.inert=false;app.removeAttribute('aria-busy');PublicImages.resume();}}
 }
 const moreMenu=$('#site-more');
 // Installation can change without a page reload; keep the current content intact.
@@ -227,13 +216,12 @@ document.addEventListener('click',event=>{if(moreMenu.open&&(!moreMenu.contains(
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&moreMenu.open){moreMenu.open=false;$('summary',moreMenu).focus();}});
 window.addEventListener('hashchange',()=>{moreMenu.open=false;route();});
 window.addEventListener('online',()=>{if(state.bootstrapOffline)void init();});
-window.addEventListener('beforeunload',event=>{if(state.dirty){event.preventDefault();event.returnValue='';}});
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='k'&&$('#search')){event.preventDefault();$('#search').focus();}});
 async function init(){
   TravelPWA.start();
   $('#today').textContent=new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
   if(location.hash==='#split'){state.site=state.site||{site_name:'行笺'};await route();}
-  try{const bootstrap=await api('/bootstrap');state.bootstrapOffline=false;state.site=bootstrap.site;const brand=$('.brand>span:last-child');brand.innerHTML=esc(state.site.site_name)+'<small>旅行攻略 · 旅途手记</small>';$('.footer>span:first-child').textContent=state.site.site_name+' · '+state.site.footer;$('meta[name=description]').content=state.site.tagline;const session=bootstrap.session;state.admin=session.authenticated;state.csrf=session.csrf;state.guides=bootstrap.guides;state.records=bootstrap.records||[];state.recordCount=bootstrap.record_count||0;Footprints.seed(bootstrap.record_page);if(location.hash==='#split'&&$('#split-form'))updateShell('split');else await route();if(location.pathname==='/admin'&&!state.admin)openLogin();}catch(error){
+  try{const bootstrap=await api('/bootstrap');state.bootstrapOffline=false;state.site=bootstrap.site;const brand=$('.brand>span:last-child');brand.innerHTML=esc(state.site.site_name)+'<small>旅行攻略 · 旅途手记</small>';$('.footer>span:first-child').textContent=state.site.site_name+' · '+state.site.footer;$('meta[name=description]').content=state.site.tagline;const session=bootstrap.session;state.admin=session.authenticated;state.csrf=session.csrf;state.guides=bootstrap.guides;state.records=bootstrap.records||[];state.recordCount=bootstrap.record_count||0;Footprints.seed(bootstrap.record_page);if(location.hash==='#split'&&$('#split-form'))updateShell('split');else await route();}catch(error){
     if(location.hash==='#split'){state.bootstrapOffline=true;return;}
     if(!adminPreview&&TravelPWA.supported){
       state.bootstrapOffline=true;state.admin=false;state.csrf='';state.guides=[];state.records=[];state.site={site_name:'行笺'};

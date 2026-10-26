@@ -19,14 +19,11 @@
   <script src="/static/travel-images.js" defer></script>
   <script src="/static/footprints.js" defer></script>
   <script src="/static/pwa.js" defer></script>
-  <script src="/static/travel-split-math.js" defer></script>
-  <script src="/static/travel-split.js" defer></script>
   <script src="/static/app.js" defer></script>
   <link rel="stylesheet" href="/static/guide-visual.css">
   <link rel="stylesheet" href="/static/journey-view.css">
   <link rel="stylesheet" href="/static/editorial.css">
   <link rel="stylesheet" href="/static/pwa.css">
-  <link rel="stylesheet" href="/static/travel-split.css">
 </head>
 <body class="public-site">
   <a class="skip-link" href="#app">跳到正文</a>
@@ -56,7 +53,10 @@
   <div id="pwa-network" class="pwa-network" role="status" hidden>当前离线 · <a href="#offline">查看已保存攻略</a></div>
   <div id="pwa-progress" class="pwa-progress" role="status" hidden></div>
   <div id="toast" role="status" aria-live="polite"></div>
-  <dialog id="login-dialog"><form id="login-form"><button type="button" class="dialog-close" data-close-login aria-label="关闭">×</button><div class="login-symbol">行笺</div><div class="eyebrow">欢迎回来</div><h2>继续记录你的远方</h2><p class="muted">管理员登录后，可以新建和整理攻略。</p><label>管理账号<input name="username" value="admin" autocomplete="username" required maxlength="80"></label><label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="256" placeholder="输入管理密码"></label><div class="form-error" id="login-error" role="alert"></div><button class="button primary full" type="submit">登录旅行空间 <span>→</span></button><p class="login-footnote">个人攻略存档 · 无需访客注册</p></form></dialog>
-  <dialog id="confirm-dialog"><div class="confirm-body"><h2 id="confirm-title">移入回收站？</h2><p class="muted" id="confirm-description">攻略将不再展示，你可以随时在回收站恢复。</p><div class="dialog-actions"><button class="button secondary" id="confirm-cancel">取消</button><button class="button danger" id="confirm-ok">确认移入</button></div></div></dialog>
+  <template id="split-assets">
+    <link rel="stylesheet" href="/static/travel-split.css">
+    <script src="/static/travel-split-math.js"></script>
+    <script src="/static/travel-split.js"></script>
+  </template>
 </body>
 </html>

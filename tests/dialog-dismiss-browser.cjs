@@ -18,7 +18,8 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         await page.setContent(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '').replace(/<link\b[^>]*>/g, ''));
         await page.addStyleTag({content: read(`static/${entry === 'admin' ? 'admin' : 'style'}.css`)});
         await page.addScriptTag({path: path.join(root, 'static/dialog-dismiss.js')});
-        const selector = entry === 'admin' ? '#dialog' : '#confirm-dialog';
+        const selector = entry === 'admin' ? '#dialog' : '#memory-viewer';
+        if (entry === 'index') await page.evaluate(() => { const dialog=document.createElement('dialog');dialog.id='memory-viewer';dialog.textContent='旅行照片预览';document.body.append(dialog); });
         await page.evaluate(selector => {
           window.d = document.querySelector(selector);
           if (selector === '#dialog') document.querySelector('#dialog-content').innerHTML = '<h2>正文预览</h2><input value="保留正文"><p>可选择的文字</p>';
@@ -61,20 +62,10 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         await page.evaluate(() => d.removeEventListener('cancel', guard));
         await page.mouse.click(3, 3);
         assert.equal(await open(), false);
-        if (entry === 'index') {
-          // Exercise the application's actual delete-confirmation promise.
-          const confirmFunction = read('static/app.js').split('\n').find(line => line.startsWith('function confirmDelete()'));
-          await page.addScriptTag({content: 'const $ = selector => document.querySelector(selector);\n' + confirmFunction});
-          await page.evaluate(() => { window.result = 'pending'; confirmDelete().then(value => window.result = value); });
-          await page.mouse.click(3, 3);
-          assert.equal(await page.evaluate(() => result), false);
-          await page.evaluate(() => { window.result = 'pending'; confirmDelete().then(value => window.result = value); });
-          await page.locator('#confirm-ok').click();
-          assert.equal(await page.evaluate(() => result), true);
-        }
+
       }
       await context.close();
     }
-    console.log('PASS: desktop/mobile backdrop, content, drag, swipe, Esc, dynamic dialogs, cancel guard and delete confirmation');
+    console.log('PASS: desktop/mobile backdrop, content, drag, swipe, Esc, dynamic dialogs, cancel guard');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

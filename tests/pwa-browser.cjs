@@ -43,6 +43,11 @@ function worker(){const h=html(),assets=[...h.matchAll(/(?:src|href)="(\/static\
   await ctx.setOffline(true);await p.reload();await p.waitForSelector('.pwa-snapshot');
   await p.waitForFunction(()=>[...document.querySelectorAll('.prose img,.detail-cover')].every(img=>img.complete&&img.naturalWidth>0));
   assert.equal(await p.locator('.prose img').count(),2);assert.ok((await p.locator('.prose').innerText()).includes('开元寺'));
+  assert.equal(await p.evaluate(()=>typeof TravelSplit),'undefined','offline shell did not execute the optional calculator');
+  await p.evaluate(()=>location.hash='split');await p.waitForSelector('#split-form');
+  await p.locator('[data-expense-field=name]').fill('离线聚餐');await p.locator('[data-expense-field=price]').fill('500');
+  assert.equal(await p.locator('#split-expense-total').innerText(),'¥500.00','first use of calculator works from the offline shell cache');
+  await p.evaluate(()=>location.hash='offline/1');await p.waitForSelector('.pwa-snapshot');
   for(const width of [320,390,768,1440]){await p.setViewportSize({width,height:900});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no horizontal page overflow '+width);}
   await p.setViewportSize({width:390,height:844});await p.screenshot({path:process.env.PWA_TEST_SCREENSHOT||'/tmp/travel-pwa-offline-phone.png',fullPage:true});
   await p.evaluate(()=>location.hash='split');await p.waitForSelector('#split-form');
