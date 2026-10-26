@@ -1,5 +1,11 @@
 /* Private research assistant; all content comes from authenticated APIs. */
 const TravelPlanner = (() => {
+ function adoptTrip(task){
+  const names=task.destinations?.length?task.destinations:[task.guide.destination];
+  if(names.length===1){location.hash='trip-new/task/'+task.id+'/'+encodeURIComponent(names[0]);return;}
+  showDialog(`<h2>选择这次想去的目的地</h2><p class='help'>采用其中一个完整方案，用于实际出行；其他候选攻略继续保留。</p><div class='trip-choice'>${names.map(name=>`<a class='button secondary' href='#trip-new/task/${task.id}/${encodeURIComponent(name)}' data-action='close-dialog'>${esc(name)} →</a>`).join('')}</div>`);
+ }
+
   let revision=0, timer=null, epoch=0, busy=false, selected=null, tasks=[], detail=null, nextBefore=null, expanded=false,refreshing=null;
   const checked=new Set();
   const endpoint='/admin/travel-agent';
@@ -218,7 +224,7 @@ const TravelPlanner = (() => {
         renderTasks();toast('已删除 '+result.count+' 条任务记录');
       }
       if(action==='cancel'){await api(endpoint+'/tasks/'+node.dataset.id+'/cancel',{method:'POST',body:{}});toast('已请求停止');await refresh(token);}
-      if(action==='trip-adopt')Trips.fromTask(detail);
+      if(action==='trip-adopt')adoptTrip(detail);
       if(action==='publication-preview'){
         busy=true;node.disabled=true;const id=detail.id,mode=node.dataset.mode;
         const answer=await api(endpoint+'/tasks/'+id+'/publication?mode='+mode);

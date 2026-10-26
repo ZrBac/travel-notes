@@ -44,7 +44,7 @@ const overview={trip,counts:{total:4,private:3,draft:1,trash:0},records:{total:2
    const file=path.join(root,u.pathname==='/admin'?'static/admin.html':u.pathname);
    return route.fulfill({body:fs.readFileSync(file),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.jpg':'image/jpeg'})[path.extname(file)]||'application/octet-stream'});
   });
-  const go=async hash=>{const encoded=await p.evaluate(h=>{location.hash=h;return location.hash.slice(1);},hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert,encoded);await p.waitForFunction(()=>!TravelEditor.busy);await p.evaluate(()=>new Promise(requestAnimationFrame));};
+  const go=async hash=>{const encoded=await p.evaluate(h=>{location.hash=h;return location.hash.slice(1);},hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert,encoded);await p.waitForFunction(()=>(typeof TravelEditor==='undefined'||!TravelEditor.busy));await p.evaluate(()=>new Promise(requestAnimationFrame));};
   const fits=async route=>assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow: '+route+' / '+width);
   const snap=async name=>{if([390,1440].includes(width)){await p.evaluate(()=>scrollTo(0,0));await p.waitForTimeout(150);await p.screenshot({path:out+'/'+name+'-'+width+'.png',fullPage:true});}};
   await p.goto('http://workspace.test/admin');await p.waitForSelector('.trip-focus');

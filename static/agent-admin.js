@@ -1,4 +1,3 @@
-function assistantExecution(info={}){return info.model?info.model+(info.effort?' · '+info.effort:' · 推理强度未回传'):(info.label||'CLI 系统默认；未回传实际模型与推理强度');}
 /* The existing administrator session protects every task endpoint. */
 const TravelAgent = (()=>{
   let revision=0, timer=null, selected=null, generation=0, busy=false, service={}, working=false, tasks=[], nextBefore=null, expanded=false,refreshing=null;const checked=new Set();

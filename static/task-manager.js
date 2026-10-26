@@ -1,3 +1,4 @@
+function assistantExecution(info={}){return info.model?info.model+(info.effort?' · '+info.effort:' · 推理强度未回传'):(info.label||'CLI 系统默认；未回传实际模型与推理强度');}
 // Shared task selection and explicit confirmation of the whole dependency branch.
 const TaskManager=(()=>{
  const active=status=>['queued','running','testing','publishing'].includes(status);

@@ -44,7 +44,7 @@ const record={id:1,title:'家人的旅行手记',destination:'南京',start_date
    const file=path.join(root,u.pathname==='/admin'?'static/admin.html':u.pathname);
    return route.fulfill({body:fs.readFileSync(file),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.jpg':'image/jpeg'})[path.extname(file)]||'application/octet-stream'});
   });
-  const go=async hash=>{await p.evaluate(h=>location.hash=h,hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert&&!TravelEditor.busy,hash);};
+  const go=async hash=>{await p.evaluate(h=>location.hash=h,hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert&&(typeof TravelEditor==='undefined'||!TravelEditor.busy),hash);};
   await p.goto('http://state.test/admin#guides');await p.waitForSelector('#filter-form');
   if(width<901)assert.ok(await p.locator('tbody tr').evaluate(row=>{const t=row.querySelector('.title-cell').getBoundingClientRect(),box=row.querySelector('input[type=checkbox]').getBoundingClientRect();return t.right+4<=box.left;}),'long title must not touch the selection box');
   await p.locator('#filter-form [name=q]').fill('南京');await p.locator('#filter-form button[type=submit]').click();await p.waitForFunction(()=>!document.querySelector('#main').inert);

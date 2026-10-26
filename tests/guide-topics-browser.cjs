@@ -33,7 +33,7 @@ const root=path.resolve(__dirname,'..'),out=process.env.TRAVEL_SCREENSHOTS||'/tm
    return route.fulfill({body:fs.readFileSync(file),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.jpg':'image/jpeg'})[path.extname(file)]||'application/octet-stream'});
   });
   const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));
-  const go=async hash=>{await p.evaluate(h=>location.hash=h,hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert&&!TravelEditor.busy,hash);};
+  const go=async hash=>{await p.evaluate(h=>location.hash=h,hash);await p.waitForFunction(h=>state.route===h&&!document.querySelector('#main').inert&&(typeof TravelEditor==='undefined'||!TravelEditor.busy),hash);};
   const fits=async()=>assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow at '+width);
   await p.goto('http://topics.test/admin#guides');await p.waitForSelector('#filter-form');
   assert.equal(await p.locator('#filter-form select[name=tag]').count(),0);assert.equal(await p.locator('#filter-form select').count(),2);

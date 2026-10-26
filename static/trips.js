@@ -8,13 +8,13 @@ const Trips=(()=>{
  const path=id=>'/admin/trips'+(id?'/'+id:'');
  const range=t=>t.start_date+' — '+t.end_date;
  const mark=form=>{dirtyForms.add(form.id);state.dirty=true;};
- const clean=form=>{dirtyForms.delete(form.id);state.dirty=dirtyForms.size>0||TripAssistant.dirty;};
+ const clean=form=>{dirtyForms.delete(form.id);state.dirty=dirtyForms.size>0||(typeof TripAssistant!=='undefined'&&TripAssistant.dirty);};
  const input=(name,label,value='',extra='')=>`<label>${esc(label)}<input name='${name}' value='${esc(value)}' ${extra}></label>`;
  const area=(name,label,value='',max=2000)=>`<label>${esc(label)}<textarea name='${name}' rows='3' maxlength='${max}'>${esc(value)}</textarea></label>`;
  const addDays=(value,count)=>{if(!value)return '';const d=new Date(value+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+count);return d.toISOString().slice(0,10);};
  const key=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');
  function freeze(form){const saved=[...form.elements].map(n=>[n,n.disabled]);form.inert=true;for(const [n]of saved)n.disabled=true;return()=>{form.inert=false;for(const [n,disabled]of saved)n.disabled=disabled;};}
- function stop(){JourneyView.dispose($('#main'));TripAssistant.stop();epoch++;current=null;source=null;targets=[];dirtyForms.clear();$('#main')?.removeEventListener('click',click);$('#main')?.removeEventListener('change',change);$('#main')?.removeEventListener('input',inputChanged);$('#main')?.removeEventListener('submit',submit);}
+ function stop(){if(typeof JourneyView!=='undefined')JourneyView.dispose($('#main'));if(typeof TripAssistant!=='undefined')TripAssistant.stop();epoch++;current=null;source=null;targets=[];dirtyForms.clear();$('#main')?.removeEventListener('click',click);$('#main')?.removeEventListener('change',change);$('#main')?.removeEventListener('input',inputChanged);$('#main')?.removeEventListener('submit',submit);}
  function bind(){$('#main').addEventListener('click',click);$('#main').addEventListener('change',change);$('#main').addEventListener('input',inputChanged);$('#main').addEventListener('submit',submit);}
  function inputChanged(event){const form=event.target.closest('form[data-trip-form]');if(form)mark(form);}
  function removalButton(t){return `<button class="button danger" type="button" data-trip="trash-trip" data-id="${t.id}" data-revision="${t.revision}" data-title="${esc(t.title)}">删除旅行</button>`;}
@@ -52,11 +52,6 @@ const Trips=(()=>{
   bind();
  }
  function targetOptions(days){return targets.map(t=>`<option value='${t.id}' ${t.days!==days?'disabled':''}>${esc(t.title)} · ${t.days} 天${t.days!==days?'（天数不同）':''}</option>`).join('');}
- function fromTask(task){
-  const names=task.destinations?.length?task.destinations:[task.guide.destination];
-  if(names.length===1){location.hash='trip-new/task/'+task.id+'/'+encodeURIComponent(names[0]);return;}
-  showDialog(`<h2>选择这次想去的目的地</h2><p class='help'>采用其中一个完整方案，用于实际出行；其他候选攻略继续保留。</p><div class='trip-choice'>${names.map(name=>`<a class='button secondary' href='#trip-new/task/${task.id}/${encodeURIComponent(name)}' data-action='close-dialog'>${esc(name)} →</a>`).join('')}</div>`);
- }
  async function detail(gen,id,tab){
   stop();const token=epoch;if(!Number.isSafeInteger(Number(id))||Number(id)<1)throw Error('旅行编号不正确');
   let data;try{data=await api(path(id));}catch(error){if(error.status!==404)throw error;if(!here(token)||gen!==state.generation)return;$('#main').innerHTML=heading('旅行详情','这趟旅行不存在或已删除。')+empty('找不到这趟旅行','如果是误删，可以到旅行回收站恢复。')+'<div class="actions"><a class="button secondary" href="#trips?state=trash">查看旅行回收站</a><a class="button" href="#trips">返回我的旅行</a></div>';return;}if(!here(token)||gen!==state.generation)return;
@@ -105,7 +100,7 @@ const Trips=(()=>{
   try{
    if(node.dataset.tripCheck){const item=current.trip.checklist.find(c=>c.id===node.dataset.tripCheck);const prior=item.done;if(busy){node.checked=prior;return;}try{await checkMutation({action:'update',id:item.id,done:node.checked});}catch{node.checked=prior;}return;}
    if(node.id==='trip-day-select'){
-    if((dirtyForms.has('trip-day-form')||TripAssistant.dirty)&&!confirm('当天安排或助手要求尚未保存，切换日期会丢失修改。继续？')){node.value=selectedDay;return;}
+    if((dirtyForms.has('trip-day-form')||(typeof TripAssistant!=='undefined'&&TripAssistant.dirty))&&!confirm('当天安排或助手要求尚未保存，切换日期会丢失修改。继续？')){node.value=selectedDay;return;}
     dirtyForms.delete('trip-day-form');TripAssistant.stop();state.dirty=dirtyForms.size>0;selectedDay=Number(node.value);$('#trip-assistant-zone').outerHTML=TripAssistant.panel(current,selectedDay);TripAssistant.mount(current,selectedDay,reloadCurrent);JourneyView.dispose($('#trip-today-content'));$('#trip-today-content').innerHTML=dayRead(itinerary()[selectedDay-1],true);JourneyView.mount($('#trip-today-content'));$('#trip-day-edit').innerHTML='';return;
    }
    if(node.name==='target'&&node.closest('#trip-create-form')){const existing=targets.find(t=>t.id===Number(node.value));$('#trip-create-meta').hidden=!!existing;for(const field of $('#trip-create-meta').querySelectorAll('input,textarea'))field.disabled=!!existing;$('#trip-target-note').textContent=existing?`采用到「${existing.title}」，保留 ${range(existing)}、${existing.people} 人及现有准备事项。`:'创建新旅行时填写日期；采用到已有旅行时保留原日期、人数和备忘。';mark(node.form);return;}
@@ -138,7 +133,7 @@ const Trips=(()=>{
   }catch{/* Inline error keeps the form and input intact. */}
  }
  async function click(event){
-  const node=event.target.closest('[data-trip]');if(!node||busy||TripAssistant.busy)return;const action=node.dataset.trip;
+  const node=event.target.closest('[data-trip]');if(!node||busy||(typeof TripAssistant!=='undefined'&&TripAssistant.busy))return;const action=node.dataset.trip;
   try{
    if(action==='trash-trip'||action==='restore-trip'||action==='purge-trip'){
     const restore=action==='restore-trip',purge=action==='purge-trip',id=Number(node.dataset.id),revision=Number(node.dataset.revision);
@@ -157,9 +152,9 @@ const Trips=(()=>{
    if(action==='more-targets'){const token=epoch,data=await api(path()+'?state=active&page='+(targetPage+1));if(!here(token))return;targets.push(...data.trips);targetPage=data.page;targetPages=data.pages;const select=$('#trip-create-form [name=target]'),value=select.value;select.innerHTML='<option value="">创建一趟新旅行</option>'+targetOptions(source.plan.days);select.value=value;node.hidden=targetPage>=targetPages;}
    if(action==='edit-day'){
     if(dirtyForms.has('trip-day-form')&&!confirm('替换当前未保存的日程修改？'))return;
-    dirtyForms.delete('trip-day-form');state.dirty=dirtyForms.size>0||TripAssistant.dirty;$('#trip-day-edit').innerHTML=dayEditor(itinerary()[Number(node.dataset.day)-1]);$('#trip-day-edit').scrollIntoView({behavior:'smooth',block:'start'});
+    dirtyForms.delete('trip-day-form');state.dirty=dirtyForms.size>0||(typeof TripAssistant!=='undefined'&&TripAssistant.dirty);$('#trip-day-edit').innerHTML=dayEditor(itinerary()[Number(node.dataset.day)-1]);$('#trip-day-edit').scrollIntoView({behavior:'smooth',block:'start'});
    }
-   if(action==='cancel-day'){if(dirtyForms.has('trip-day-form')&&!confirm('放弃这次尚未保存的修改？'))return;dirtyForms.delete('trip-day-form');state.dirty=dirtyForms.size>0||TripAssistant.dirty;$('#trip-day-edit').innerHTML='';}
+   if(action==='cancel-day'){if(dirtyForms.has('trip-day-form')&&!confirm('放弃这次尚未保存的修改？'))return;dirtyForms.delete('trip-day-form');state.dirty=dirtyForms.size>0||(typeof TripAssistant!=='undefined'&&TripAssistant.dirty);$('#trip-day-edit').innerHTML='';}
    if(action==='progress')await write(path(current.trip.id)+'/progress',{revision:current.trip.revision,plan_version:current.plan.version,day:Number(node.dataset.day),index:Number(node.dataset.index),status:node.dataset.status},null,'trip-error',answer=>{current.trip.revision=answer.revision;current.trip.progress=answer.progress;JourneyView.dispose($('#trip-today-content'));$('#trip-today-content').innerHTML=dayRead(itinerary()[selectedDay-1],true);JourneyView.mount($('#trip-today-content'));});
    if(action==='remove-check'){const item=current.trip.checklist.find(c=>c.id===node.dataset.id);if(confirm('移除准备事项「'+item.title+'」？'))await checkMutation({action:'remove',id:item.id});}
    if(action==='edit-check'){
@@ -179,5 +174,5 @@ const Trips=(()=>{
   }catch(error){toast(error.message,true);}
  }
  async function reloadCurrent(){const token=epoch,tab=current.tab;const answer=await api(path(current.trip.id));if(!here(token))return;current=answer;current.tab=tab;render();}
- return {stop,list,create,detail,homeCard,fromTask,dayPreview:dayRead,get hasDraft(){return dirtyForms.size>0;},get busy(){return busy||TripAssistant.busy;}};
+ return {stop,list,create,detail,homeCard,dayPreview:dayRead,get hasDraft(){return dirtyForms.size>0;},get busy(){return busy||(typeof TripAssistant!=='undefined'&&TripAssistant.busy);}};
 })();

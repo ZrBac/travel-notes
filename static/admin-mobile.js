@@ -31,7 +31,7 @@
   source=form?.querySelector('button[type=submit]')||null;
   bar.hidden=!source||!state.user;
   document.body.classList.toggle('has-mobile-save',!bar.hidden);
-  if(source){const button=bar.querySelector('button');button.disabled=source.disabled||TravelEditor.busy||main.inert;
+  if(source){const button=bar.querySelector('button');button.disabled=source.disabled||(typeof TravelEditor!=='undefined'&&TravelEditor.busy)||main.inert;
    button.textContent=source.disabled?'正在处理…':form.id==='record-editor-form'?'保存足迹':'保存攻略';
    bar.querySelector('span').textContent=(state.dirty?'未保存 · ':'当前：')+(statusName[form.elements.status?.value]||'待保存');}
  }
@@ -39,7 +39,7 @@
  new MutationObserver(schedule).observe(main,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','inert','aria-busy']});
  new MutationObserver(schedule).observe(dialog,{childList:true,subtree:true});
  main.addEventListener('input',schedule);main.addEventListener('change',schedule);
- bar.querySelector('button').addEventListener('click',()=>{if(source?.isConnected&&!source.disabled&&!TravelEditor.busy&&!main.inert)source.click();schedule();});
+ bar.querySelector('button').addEventListener('click',()=>{if(source?.isConnected&&!source.disabled&&!(typeof TravelEditor!=='undefined'&&TravelEditor.busy)&&!main.inert)source.click();schedule();});
  // The shared drawer owns backdrop, focus and Escape behavior.
  const keyboard=()=>document.body.classList.toggle('admin-keyboard-open',!!window.visualViewport&&window.innerHeight-window.visualViewport.height>150);
  window.visualViewport?.addEventListener('resize',keyboard);keyboard();schedule();
